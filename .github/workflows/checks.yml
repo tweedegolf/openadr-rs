@@ -36,7 +36,7 @@ jobs:
             features: "--all-features"
     steps:
       - name: Checkout sources
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
           persist-credentials: false
 
@@ -50,17 +50,17 @@ jobs:
           targets: "${{ matrix.target }}"
 
       - name: Install cross-compilation tools
-        uses: taiki-e/setup-cross-toolchain-action@0e38473b0c562d6db19a98d3ec20a80f7ac189ae
+        uses: taiki-e/setup-cross-toolchain-action@0e38473b0c562d6db19a98d3ec20a80f7ac189ae # v1.21.1
         with:
           target: ${{ matrix.target }}
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@689459d9ffef015a7fbaef7f3b6b9f053f80a64d
+        uses: taiki-e/install-action@689459d9ffef015a7fbaef7f3b6b9f053f80a64d # v2.33.26
         with:
           tool: cargo-llvm-cov
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84
+        uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
         with:
             shared-key: "${{matrix.rust}}-${{matrix.target}}"
 
@@ -73,7 +73,7 @@ jobs:
           RUST_BACKTRACE: 1
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@6d798873df2b1b8e5846dba6fb86631229fbcb17
+        uses: codecov/codecov-action@6d798873df2b1b8e5846dba6fb86631229fbcb17 # v4.4.0
         with:
           files: lcov.info
           fail_ci_if_error: false
@@ -82,8 +82,7 @@ jobs:
     name: Check unused dependencies
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
           persist-credentials: false
 
@@ -93,7 +92,7 @@ jobs:
           toolchain: nightly
 
       - name: Install udeps
-        uses: taiki-e/install-action@689459d9ffef015a7fbaef7f3b6b9f053f80a64d
+        uses: taiki-e/install-action@689459d9ffef015a7fbaef7f3b6b9f053f80a64d # v2.33.26
         with:
           tool: cargo-udeps
 
@@ -104,8 +103,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
           persist-credentials: false
 
@@ -125,24 +123,19 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             use_zig: false
-            fuzzer: true
             zig_args: ""
           - target: aarch64-unknown-linux-gnu
             use_zig: true
-            fuzzer: false
             zig_args: "-target aarch64-linux-gnu -g"
           - target: armv7-unknown-linux-gnueabihf
             use_zig: true
-            fuzzer: false
             zig_args: "-target arm-linux-gnueabihf -mcpu=generic+v7a+vfp3-d32+thumb2-neon -g"
           - target: x86_64-unknown-linux-musl
             use_zig: true
-            fuzzer: false
             zig_args: "-target x86_64-linux-musl"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
         with:
           persist-credentials: false
 
@@ -156,13 +149,13 @@ jobs:
       # Use zig as our C compiler for convenient cross-compilation. We run into rustls having a dependency on `ring`.
       # This crate uses C and assembly code, and because of its build scripts, `cargo clippy` needs to be able to compile
       # that code for our target.
-      - uses: goto-bus-stop/setup-zig@7ab2955eb728f5440978d5824358023be3a2802d
+      - uses: goto-bus-stop/setup-zig@7ab2955eb728f5440978d5824358023be3a2802d # v2.2.0
         with:
           version: 0.9.0
         if: ${{matrix.use_zig}}
 
       - name: Install cargo-zigbuild
-        uses: taiki-e/install-action@689459d9ffef015a7fbaef7f3b6b9f053f80a64d
+        uses: taiki-e/install-action@689459d9ffef015a7fbaef7f3b6b9f053f80a64d # v2.33.26
         with:
           tool: cargo-zigbuild
         if: ${{matrix.use_zig}}
@@ -172,7 +165,7 @@ jobs:
         if: ${{matrix.use_zig}}
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84
+        uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
         with:
             shared-key: "stable-${{matrix.target}}"
 
@@ -183,13 +176,8 @@ jobs:
     name: Audit dependencies
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+    - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
 
     - uses: EmbarkStudios/cargo-deny-action@3f4a782664881cf5725d0ffd23969fcce89fd868
       with:
         arguments: --workspace --all-features
-
-    - uses: EmbarkStudios/cargo-deny-action@3f4a782664881cf5725d0ffd23969fcce89fd868
-      with:
-        manifest-path: ./fuzz/Cargo.toml
-        arguments: --all-features
