@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Event {
     Simple,
@@ -10,8 +10,10 @@ pub enum Event {
     DispatchSetpointRelative,
     ControlSetpoint,
     ExportPrice,
+    #[serde(rename = "GHG")]
     GHG,
     Curve,
+    #[serde(rename = "OLS")]
     OLS,
     ImportCapacitySubscription,
     ImportCapacityReservation,
@@ -35,6 +37,123 @@ pub enum Event {
     AlertTsunami,
     AlertAirQuality,
     AlertOther,
+    #[serde(rename = "CTA2045_REBOOT")]
     CTA2045Reboot,
+    #[serde(rename = "CTA2045_SET_OVERRIDE_STATUS")]
     CTA2045SetOverrideStatus,
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ReportType {
+    Reading,
+    Usage,
+    Demand,
+    Setpoint,
+    DeltaUsage,
+    Baseline,
+    OperatingState,
+    UpRegulationAvailable,
+    DownRegulationAvailable,
+    RegulationSetpoint,
+    StorageUsableCapacity,
+    StorageChargeLevel,
+    StorageMaxDischargePower,
+    StorageMaxChargePower,
+    SimpleLevel,
+    UsageForecast,
+    StorageDispatchForecast,
+    LoadShedDeltaAvailable,
+    GenerationDeltaAvailable,
+    DataQuality,
+    ImportReservationCapacity,
+    ImportReservationFee,
+    ExportReservationCapacity,
+    ExportReservationFee,
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ReadingType {
+    DirectRead,
+    Estimated,
+    Summed,
+    Mean,
+    Peak,
+    Forecast,
+    Average,
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum OperatingState {
+    Normal,
+    Error,
+    IdleNormal,
+    RunningNormal,
+    RunningCurtailed,
+    RunningHeightened,
+    IdleCurtailed,
+    #[serde(rename = "SGD_ERROR_CONDITION")]
+    SGDErrorCondition,
+    IdleHeightened,
+    IdleOptedOut,
+    RunningOptedOut,
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ResourceName {
+    AggregatedReport,
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DataQuality {
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Target {
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Attribute {
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum Unit {
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Event;
+
+    #[test]
+    fn test_event_serialization() {
+        assert_eq!(serde_json::to_string(&Event::Simple).unwrap(), r#""SIMPLE""#);
+        assert_eq!(serde_json::to_string(&Event::CTA2045Reboot).unwrap(), r#""CTA2045_REBOOT""#);
+        assert_eq!(serde_json::from_str::<Event>(r#""GHG""#).unwrap(), Event::GHG);
+        assert_eq!(serde_json::from_str::<Event>(r#""something else""#).unwrap(), Event::Private(String::from("something else")));
+    }
 }
