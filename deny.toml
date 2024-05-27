@@ -11,4 +11,5 @@ private = { ignore = true }
 allow = [
     "MIT",
     "Apache-2.0",
+    "Unicode-DFS-2016",
 ]
