@@ -2,5 +2,11 @@
 name = "openadr-rs"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.70" # MSRV
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/tweedegolf/openadr-rs"
+homepage = "https://github.com/tweedegolf/openadr-rs"
+publish = true
+description = "An OpenADR 3.0 VTN/VEN implementation"
 
 [dependencies]
