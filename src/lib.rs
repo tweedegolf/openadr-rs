@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod generated;
 pub mod wire;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Event {
     Simple,
@@ -48,7 +48,7 @@ pub enum Event {
     Private(String),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReportType {
     Reading,
@@ -79,9 +79,10 @@ pub enum ReportType {
     Private(String),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ReadingType {
+    #[default]
     DirectRead,
     Estimated,
     Summed,
@@ -91,6 +92,12 @@ pub enum ReadingType {
     Average,
     #[serde(untagged)]
     Private(String),
+}
+
+impl ReadingType {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -136,7 +143,7 @@ pub enum DataQuality {
     Private(String),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Target {
     /// A Power Service Location is a utility named specific location in

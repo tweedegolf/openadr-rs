@@ -6,7 +6,7 @@ use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
 use crate::wire::values_map::ValuesMap;
-use crate::wire::{Currency, DateTime, PayloadType, Unit};
+use crate::wire::{Currency, DateTime, Unit};
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -99,7 +99,7 @@ pub enum EventObjectType {
 #[serde(rename_all = "camelCase")]
 pub struct EventPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
-    pub payload_type: PayloadType,
+    pub payload_type: crate::Event,
     /// Units of measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
@@ -109,7 +109,7 @@ pub struct EventPayloadDescriptor {
 }
 
 impl EventPayloadDescriptor {
-    pub fn new(payload_type: PayloadType) -> Self {
+    pub fn new(payload_type: crate::Event) -> Self {
         Self {
             payload_type,
             units: None,

@@ -122,10 +122,10 @@ impl Resource {
 #[serde(rename_all = "camelCase")]
 pub struct ReportDescriptor {
     /// Enumerated or private string signifying the nature of values.
-    pub payload_type: PayloadType,
+    pub payload_type: crate::ReportType,
     /// Enumerated or private string signifying the type of reading.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reading_type: Option<ReadingType>,
+    #[serde(skip_serializing_if = "crate::ReadingType::is_default", default)]
+    pub reading_type: crate::ReadingType,
     /// Units of measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
@@ -154,10 +154,10 @@ pub struct ReportDescriptor {
 
 impl ReportDescriptor {
     /// An object that may be used to request a report from a VEN. See OpenADR REST User Guide for detailed description of how configure a report request.
-    pub fn new(payload_type: PayloadType) -> Self {
+    pub fn new(payload_type: crate::ReportType) -> Self {
         Self {
             payload_type,
-            reading_type: None,
+            reading_type: crate::ReadingType::default(),
             units: None,
             targets: None,
             aggregate: false,
@@ -196,7 +196,7 @@ pub struct ReportPayloadDescriptor {
     pub payload_type: PayloadType,
     /// Enumerated or private string signifying the type of reading.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reading_type: Option<ReadingType>,
+    pub reading_type: Option<crate::ReadingType>,
     /// Units of measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
@@ -220,13 +220,6 @@ impl ReportPayloadDescriptor {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ReadingType {
-    DirectRead,
-    Todo,
-}
-
 // TODO: Add range checks
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Confidence(u8);
@@ -241,7 +234,7 @@ mod tests {
     #[test]
     fn descriptor_parses_minimal() {
         let json = r#"{"payloadType":"hello"}"#;
-        let expected = ReportDescriptor::new(PayloadType("hello".into()));
+        let expected = ReportDescriptor::new(crate::ReportType::Private("hello".into()));
 
         assert_eq!(
             serde_json::from_str::<ReportDescriptor>(json).unwrap(),
