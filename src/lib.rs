@@ -119,7 +119,7 @@ pub enum OperatingState {
     Private(String),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ResourceName {
     AggregatedReport,
@@ -127,7 +127,7 @@ pub enum ResourceName {
     Private(String),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DataQuality {
     /// No known reasons to doubt the data.
@@ -168,7 +168,7 @@ pub enum Target {
     Private(String),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Attribute {
     /// Describes a single geographic point. Values contains 2 floats, generally
@@ -190,7 +190,7 @@ pub enum Attribute {
     Private(String),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Unit {
     /// Kilowatt-hours (kWh)

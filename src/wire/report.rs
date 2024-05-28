@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
-use crate::wire::values_map::ValuesMap;
 use crate::wire::{DateTime, PayloadType, TargetMap, Unit};
 
 /// report object.
@@ -90,13 +89,13 @@ pub enum ObjectType {
 }
 
 /// Report data associated with a resource.
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Resource {
     /// User generated identifier. A value of AGGREGATED_REPORT indicates an aggregation of more
     /// that one resource's data
     // TODO: handle special name and length validation
-    pub resource_name: String,
+    pub resource_name: crate::ResourceName,
     /// Defines default start and durations of intervals.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_period: Option<IntervalPeriod>,
@@ -106,7 +105,7 @@ pub struct Resource {
 
 impl Resource {
     /// Report data associated with a resource.
-    pub fn new(resource_name: String, intervals: Vec<Interval>) -> Resource {
+    pub fn new(resource_name: crate::ResourceName, intervals: Vec<Interval>) -> Resource {
         Resource {
             resource_name,
             interval_period: None,
@@ -226,7 +225,7 @@ pub struct Confidence(u8);
 
 #[cfg(test)]
 mod tests {
-    use crate::wire::values_map::{Value, ValueType};
+    use crate::wire::values_map::{Value, ValueType, ValuesMap};
     use crate::wire::Duration;
 
     use super::*;
@@ -306,7 +305,7 @@ mod tests {
             report_name: Some("Battery_usage_04112023".into()),
             payload_descriptors: None,
             resources: vec![Resource {
-                resource_name: "RESOURCE-999".into(),
+                resource_name: crate::ResourceName::Private("RESOURCE-999".into()),
                 interval_period: Some(IntervalPeriod {
                     start: DateTime("2023-06-15T09:30:00Z".into()),
                     duration: Some(Duration("PT1H".into())),
