@@ -194,8 +194,8 @@ pub struct ReportPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
     pub payload_type: PayloadType,
     /// Enumerated or private string signifying the type of reading.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reading_type: Option<crate::ReadingType>,
+    #[serde(skip_serializing_if = "crate::ReadingType::is_default", default)]
+    pub reading_type: crate::ReadingType,
     /// Units of measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
@@ -211,7 +211,7 @@ impl ReportPayloadDescriptor {
     pub fn new(payload_type: PayloadType) -> Self {
         Self {
             payload_type,
-            reading_type: None,
+            reading_type: Default::default(),
             units: None,
             accuracy: None,
             confidence: None,
