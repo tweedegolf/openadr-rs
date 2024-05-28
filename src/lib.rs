@@ -120,6 +120,15 @@ pub enum ResourceName {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DataQuality {
+    /// No known reasons to doubt the data.
+    Ok,
+    /// The data item is currently unavailable.
+    Missing,
+    /// The data item has been estimated from other available information.
+    Estimated,
+    /// The data item is suspected to be bad or is known to be.
+    Bad,
+    /// An application specific privately defined data quality setting.
     #[serde(untagged)]
     Private(String),
 }
@@ -127,6 +136,23 @@ pub enum DataQuality {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Target {
+    /// A Power Service Location is a utility named specific location in
+    /// geography or the distribution system, usually the point of service to a
+    /// customer site.
+    PowerServiceLocation,
+    /// A Service Area is a utility named geographic region.
+    ServiceArea,
+    /// Targeting a specific group (string).
+    Group,
+    /// Targeting a specific resource (string).
+    ResourceName,
+    /// Targeting a specific VEN (string).
+    VENName,
+    /// Targeting a specific event (string).
+    EventName,
+    /// Targeting a specific program (string).
+    ProgramName,
+    /// An application specific privately defined target.
     #[serde(untagged)]
     Private(String),
 }
@@ -134,6 +160,21 @@ pub enum Target {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Attribute {
+    /// Describes a single geographic point. Values contains 2 floats, generally
+    /// representing longitude and latitude. Demand Response programs may define
+    /// their own use of these fields.
+    Location,
+    /// Describes a geographic area. Application specific data. Demand Response
+    /// programs may define their own use of these fields, such as GeoJSON
+    /// polygon data.
+    Area,
+    /// The maximum consumption as a float, in kiloWatts.
+    MaxPowerConsumption,
+    /// The maximum power the device can export as a float, in kiloWatts.
+    MaxPowerExport,
+    /// A free-form short description of a VEN or resource.
+    Description,
+    /// An application specific privately defined attribute.
     #[serde(untagged)]
     Private(String),
 }
@@ -141,6 +182,38 @@ pub enum Attribute {
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Unit {
+    /// Kilowatt-hours (kWh)
+    #[serde(rename = "KWH")]
+    KWH,
+    /// Greenhouse gas emissions (g/kWh)
+    #[serde(rename = "GHG")]
+    GHG,
+    /// Voltage (V)
+    Volts,
+    /// Current (A)
+    Amps,
+    /// Temperature (C)
+    Celcius,
+    /// Temperature (F)
+    Fahrenheit,
+    /// Percentage (%)
+    Percent,
+    /// Kilowatts
+    #[serde(rename = "KW")]
+    KW,
+    /// Kilovolt-ampere hours (kVAh)
+    #[serde(rename = "KVAH")]
+    KVAH,
+    /// Kilovolt-amperes reactive hours (kVARh)
+    #[serde(rename = "KVARH")]
+    KVARH,
+    /// Kilovolt-amperes (kVA)
+    #[serde(rename = "KVA")]
+    KVA,
+    /// Kilovolt-amperes reactive (kVAR)
+    #[serde(rename = "KVAR")]
+    KVAR,
+    /// An application specific privately defined unit.
     #[serde(untagged)]
     Private(String),
 }
@@ -151,9 +224,21 @@ mod tests {
 
     #[test]
     fn test_event_serialization() {
-        assert_eq!(serde_json::to_string(&Event::Simple).unwrap(), r#""SIMPLE""#);
-        assert_eq!(serde_json::to_string(&Event::CTA2045Reboot).unwrap(), r#""CTA2045_REBOOT""#);
-        assert_eq!(serde_json::from_str::<Event>(r#""GHG""#).unwrap(), Event::GHG);
-        assert_eq!(serde_json::from_str::<Event>(r#""something else""#).unwrap(), Event::Private(String::from("something else")));
+        assert_eq!(
+            serde_json::to_string(&Event::Simple).unwrap(),
+            r#""SIMPLE""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Event::CTA2045Reboot).unwrap(),
+            r#""CTA2045_REBOOT""#
+        );
+        assert_eq!(
+            serde_json::from_str::<Event>(r#""GHG""#).unwrap(),
+            Event::GHG
+        );
+        assert_eq!(
+            serde_json::from_str::<Event>(r#""something else""#).unwrap(),
+            Event::Private(String::from("something else"))
+        );
     }
 }
