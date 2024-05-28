@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod generated;
+pub mod wire;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]

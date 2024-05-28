@@ -1,7 +1,7 @@
 /*
  * OpenADR 3 API
  *
- * The OpenADR 3 API supports energy retailer to energy customer Demand Response programs. The API includes the following capabilities and operations:  __Manage programs:__  * Create/Update/Delete a program * Search programs  __Manage events:__  * Create/Update/Delete an event * Search events  __Manage reports:__  * Create/Update/Delete a report * Search reports  __Manage subscriptions:__  * Create/Update/Delete subscriptions to programs, events, and reports * Search subscriptions * Subscriptions allows clients to register a callback URL (webhook) to be notified   on the change of state of a resource  __Manage vens:__  * Create/Update/Delete vens and ven resources * Search ven and ven resources  __Manage tokens:__  * Obtain an access token * This endpoint is provided as a convenience and may be neglected in a commercial implementation 
+ * The OpenADR 3 API supports energy retailer to energy customer Demand Response programs. The API includes the following capabilities and operations:  __Manage programs:__  * Create/Update/Delete a program * Search programs  __Manage events:__  * Create/Update/Delete an event * Search events  __Manage reports:__  * Create/Update/Delete a report * Search reports  __Manage subscriptions:__  * Create/Update/Delete subscriptions to programs, events, and reports * Search subscriptions * Subscriptions allows clients to register a callback URL (webhook) to be notified   on the change of state of a resource  __Manage vens:__  * Create/Update/Delete vens and ven resources * Search ven and ven resources  __Manage tokens:__  * Obtain an access token * This endpoint is provided as a convenience and may be neglected in a commercial implementation
  *
  * The version of the OpenAPI document: 3.0.1
  * Contact: frank@pajaritotech.com
@@ -9,11 +9,12 @@
  */
 
 use serde::{Deserialize, Serialize};
-use super::{ObjectTypes, NotificationObject, ValuesMap};
+
+use crate::wire::values_map::ValuesMap;
+
+use super::{NotificationObject, ObjectTypes};
 
 /// Notification : VTN generated object included in request to subscription callbackUrl.
-
-
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Notification {
@@ -30,8 +31,12 @@ pub struct Notification {
 }
 
 impl Notification {
-    /// VTN generated object included in request to subscription callbackUrl. 
-    pub fn new(object_type: ObjectTypes, operation: Operation, object: NotificationObject) -> Notification {
+    /// VTN generated object included in request to subscription callbackUrl.
+    pub fn new(
+        object_type: ObjectTypes,
+        operation: Operation,
+        object: NotificationObject,
+    ) -> Notification {
         Notification {
             object_type,
             operation,
@@ -59,4 +64,3 @@ impl Default for Operation {
         Self::Get
     }
 }
-

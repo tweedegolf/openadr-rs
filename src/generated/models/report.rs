@@ -1,7 +1,7 @@
 /*
  * OpenADR 3 API
  *
- * The OpenADR 3 API supports energy retailer to energy customer Demand Response programs. The API includes the following capabilities and operations:  __Manage programs:__  * Create/Update/Delete a program * Search programs  __Manage events:__  * Create/Update/Delete an event * Search events  __Manage reports:__  * Create/Update/Delete a report * Search reports  __Manage subscriptions:__  * Create/Update/Delete subscriptions to programs, events, and reports * Search subscriptions * Subscriptions allows clients to register a callback URL (webhook) to be notified   on the change of state of a resource  __Manage vens:__  * Create/Update/Delete vens and ven resources * Search ven and ven resources  __Manage tokens:__  * Obtain an access token * This endpoint is provided as a convenience and may be neglected in a commercial implementation 
+ * The OpenADR 3 API supports energy retailer to energy customer Demand Response programs. The API includes the following capabilities and operations:  __Manage programs:__  * Create/Update/Delete a program * Search programs  __Manage events:__  * Create/Update/Delete an event * Search events  __Manage reports:__  * Create/Update/Delete a report * Search reports  __Manage subscriptions:__  * Create/Update/Delete subscriptions to programs, events, and reports * Search subscriptions * Subscriptions allows clients to register a callback URL (webhook) to be notified   on the change of state of a resource  __Manage vens:__  * Create/Update/Delete vens and ven resources * Search ven and ven resources  __Manage tokens:__  * Obtain an access token * This endpoint is provided as a convenience and may be neglected in a commercial implementation
  *
  * The version of the OpenAPI document: 3.0.1
  * Contact: frank@pajaritotech.com
@@ -9,11 +9,11 @@
  */
 
 use serde::{Deserialize, Serialize};
-use crate::generated::models::{ReportPayloadDescriptor, ReportResourcesInner};
+
+use crate::generated::models::ReportResourcesInner;
+use crate::wire::report::ReportPayloadDescriptor;
 
 /// Report : report object.
-
-
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Report {
@@ -24,7 +24,10 @@ pub struct Report {
     #[serde(rename = "createdDateTime", skip_serializing_if = "Option::is_none")]
     pub created_date_time: Option<String>,
     /// datetime in ISO 8601 format
-    #[serde(rename = "modificationDateTime", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "modificationDateTime",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub modification_date_time: Option<String>,
     /// Used as discriminator, e.g. notification.object
     #[serde(rename = "objectType", skip_serializing_if = "Option::is_none")]
@@ -51,7 +54,12 @@ pub struct Report {
 
 impl Report {
     /// report object.
-    pub fn new(program_id: String, event_id: String, client_name: String, resources: Vec<ReportResourcesInner>) -> Report {
+    pub fn new(
+        program_id: String,
+        event_id: String,
+        client_name: String,
+        resources: Vec<ReportResourcesInner>,
+    ) -> Report {
         Report {
             id: None,
             created_date_time: None,
@@ -79,4 +87,3 @@ impl Default for ObjectType {
         Self::Report
     }
 }
-
