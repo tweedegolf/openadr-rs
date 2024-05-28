@@ -113,7 +113,7 @@ impl Program {
 //         description: URL safe VTN assigned object ID.
 //         example: object-999
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
-pub struct ProgramId(String);
+pub struct ProgramId(pub String);
 
 // TODO: enforce length requirement
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

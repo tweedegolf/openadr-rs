@@ -1,24 +1,20 @@
-pub use self::event::Event;
 pub use self::notification::Notification;
 pub use self::notification_object::NotificationObject;
 pub use self::object_types::ObjectTypes;
 pub use self::problem::Problem;
 pub use self::report::Report;
-pub use self::report_descriptor::ReportDescriptor;
 pub use self::report_resources_inner::ReportResourcesInner;
 pub use self::resource::Resource;
 pub use self::subscription::Subscription;
 pub use self::subscription_object_operations_inner::SubscriptionObjectOperationsInner;
 pub use self::ven::Ven;
 
-pub mod event;
 pub mod notification;
 pub mod notification_object;
 pub mod object_types;
 pub mod point;
 pub mod problem;
 pub mod report;
-pub mod report_descriptor;
 pub mod report_resources_inner;
 pub mod resource;
 pub mod subscription;
