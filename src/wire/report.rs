@@ -6,7 +6,7 @@ use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::values_map::ValuesMap;
-use crate::wire::{DateTime, PayloadType, Unit};
+use crate::wire::{DateTime, PayloadType, TargetMap, Unit};
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -131,7 +131,7 @@ pub struct ReportDescriptor {
     pub units: Option<Unit>,
     /// A list of valuesMap objects.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub targets: Option<Vec<ValuesMap>>,
+    pub targets: Option<TargetMap>,
     /// True if report should aggregate results from all targeted resources. False if report includes results for each resource.
     #[serde(default = "bool_false")]
     pub aggregate: bool,

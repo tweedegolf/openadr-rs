@@ -38,3 +38,14 @@ pub enum Currency {
 // TODO figure out what this is...
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PayloadType(String);
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct TargetMap(Vec<Target>);
+
+// TODO: Handle strong typing of values
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Target {
+    #[serde(rename = "type")]
+    label: crate::Target,
+    values: [String; 1],
+}

@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
-use crate::wire::values_map::ValuesMap;
-use crate::wire::{Currency, DateTime, Unit};
+use crate::wire::{Currency, DateTime, TargetMap, Unit};
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -37,7 +36,7 @@ pub struct Event {
     pub priority: Option<u32>,
     /// A list of valuesMap objects.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub targets: Option<Vec<ValuesMap>>,
+    pub targets: Option<TargetMap>,
     /// A list of reportDescriptor objects. Used to request reports from VEN.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub report_descriptors: Option<Vec<ReportDescriptor>>,
@@ -62,7 +61,7 @@ impl Event {
             program_id,
             event_name: None,
             priority: None,
-            targets: None,
+            targets: Default::default(),
             report_descriptors: None,
             payload_descriptors: None,
             interval_period: None,
@@ -120,7 +119,7 @@ impl EventPayloadDescriptor {
 
 #[cfg(test)]
 mod tests {
-    use crate::wire::values_map::{Value, ValueType};
+    use crate::wire::values_map::{Value, ValueType, ValuesMap};
     use crate::wire::Duration;
 
     use super::*;
@@ -180,7 +179,7 @@ mod tests {
             program_id: ProgramId("object-999".into()),
             event_name: Some("price event 11-18-2022".into()),
             priority: Some(0),
-            targets: None,
+            targets: Default::default(),
             report_descriptors: None,
             payload_descriptors: None,
             interval_period: Some(IntervalPeriod {

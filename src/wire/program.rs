@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::wire::event::EventPayloadDescriptor;
 use crate::wire::interval::IntervalPeriod;
 use crate::wire::report::ReportPayloadDescriptor;
-use crate::wire::values_map::ValuesMap;
-use crate::wire::{DateTime, Duration};
+use crate::wire::{DateTime, Duration, TargetMap};
 
 pub type Programs = Vec<Program>;
 
@@ -78,7 +77,7 @@ pub struct Program {
     pub payload_descriptors: Option<Vec<PayloadDescriptor>>,
     /// A list of valuesMap objects.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub targets: Option<Vec<ValuesMap>>,
+    pub targets: Option<TargetMap>,
 }
 
 impl Program {
