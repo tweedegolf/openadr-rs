@@ -147,6 +147,7 @@ pub enum Target {
     /// Targeting a specific resource (string).
     ResourceName,
     /// Targeting a specific VEN (string).
+    #[serde(rename = "VEN_NAME")]
     VENName,
     /// Targeting a specific event (string).
     EventName,
@@ -220,7 +221,7 @@ pub enum Unit {
 
 #[cfg(test)]
 mod tests {
-    use super::Event;
+    use super::*;
 
     #[test]
     fn test_event_serialization() {
@@ -239,6 +240,173 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Event>(r#""something else""#).unwrap(),
             Event::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_report_type_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ReportType::Baseline).unwrap(),
+            r#""BASELINE""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ReportType::RegulationSetpoint).unwrap(),
+            r#""REGULATION_SETPOINT""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ReportType::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<ReportType>(r#""DEMAND""#).unwrap(),
+            ReportType::Demand
+        );
+        assert_eq!(
+            serde_json::from_str::<ReportType>(r#""EXPORT_RESERVATION_FEE""#).unwrap(),
+            ReportType::ExportReservationFee
+        );
+        assert_eq!(
+            serde_json::from_str::<ReportType>(r#""something else""#).unwrap(),
+            ReportType::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_reading_type_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ReadingType::DirectRead).unwrap(),
+            r#""DIRECT_READ""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ReadingType::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<ReadingType>(r#""AVERAGE""#).unwrap(),
+            ReadingType::Average
+        );
+        assert_eq!(
+            serde_json::from_str::<ReadingType>(r#""something else""#).unwrap(),
+            ReadingType::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_operating_state_serialization() {
+        assert_eq!(
+            serde_json::to_string(&OperatingState::SGDErrorCondition).unwrap(),
+            r#""SGD_ERROR_CONDITION""#
+        );
+        assert_eq!(
+            serde_json::to_string(&OperatingState::Error).unwrap(),
+            r#""ERROR""#
+        );
+        assert_eq!(
+            serde_json::to_string(&OperatingState::Private(String::from("something else")))
+                .unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<OperatingState>(r#""NORMAL""#).unwrap(),
+            OperatingState::Normal
+        );
+        assert_eq!(
+            serde_json::from_str::<OperatingState>(r#""something else""#).unwrap(),
+            OperatingState::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_resource_name_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ResourceName::AggregatedReport).unwrap(),
+            r#""AGGREGATED_REPORT""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ResourceName::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<ResourceName>(r#""AGGREGATED_REPORT""#).unwrap(),
+            ResourceName::AggregatedReport
+        );
+        assert_eq!(
+            serde_json::from_str::<ResourceName>(r#""something else""#).unwrap(),
+            ResourceName::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_data_quality_serialization() {
+        assert_eq!(serde_json::to_string(&DataQuality::Ok).unwrap(), r#""OK""#);
+        assert_eq!(
+            serde_json::to_string(&DataQuality::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<DataQuality>(r#""MISSING""#).unwrap(),
+            DataQuality::Missing
+        );
+        assert_eq!(
+            serde_json::from_str::<DataQuality>(r#""something else""#).unwrap(),
+            DataQuality::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_target_serialization() {
+        assert_eq!(
+            serde_json::to_string(&Target::EventName).unwrap(),
+            r#""EVENT_NAME""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Target::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<Target>(r#""VEN_NAME""#).unwrap(),
+            Target::VENName
+        );
+        assert_eq!(
+            serde_json::from_str::<Target>(r#""something else""#).unwrap(),
+            Target::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_attribute_serialization() {
+        assert_eq!(
+            serde_json::to_string(&Attribute::Area).unwrap(),
+            r#""AREA""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Attribute::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<Attribute>(r#""MAX_POWER_EXPORT""#).unwrap(),
+            Attribute::MaxPowerExport
+        );
+        assert_eq!(
+            serde_json::from_str::<Attribute>(r#""something else""#).unwrap(),
+            Attribute::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_unit_serialization() {
+        assert_eq!(serde_json::to_string(&Unit::KVARH).unwrap(), r#""KVARH""#);
+        assert_eq!(
+            serde_json::to_string(&Unit::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<Unit>(r#""CELCIUS""#).unwrap(),
+            Unit::Celcius
+        );
+        assert_eq!(
+            serde_json::from_str::<Unit>(r#""something else""#).unwrap(),
+            Unit::Private(String::from("something else"))
         );
     }
 }
