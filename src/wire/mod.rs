@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub use event::Event;
 pub use program::Program;
+pub use report::Report;
 
 pub mod event;
 pub mod interval;

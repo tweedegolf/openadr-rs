@@ -78,7 +78,7 @@ impl Event {
 //         description: URL safe VTN assigned object ID.
 //         example: object-999
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
-pub struct EventId(String);
+pub struct EventId(pub String);
 
 /// Used as discriminator, e.g. notification.object
 #[derive(
