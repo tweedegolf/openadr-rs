@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+pub use event::Event;
+pub use program::Program;
+
 pub mod event;
 pub mod interval;
 pub mod program;

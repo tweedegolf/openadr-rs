@@ -13,7 +13,7 @@ pub struct ValuesMap {
 
 // TODO: Add validation len in 1..=128
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ValueType(String);
+pub struct ValueType(pub String);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
