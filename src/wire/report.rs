@@ -1,12 +1,14 @@
 //! Types used for the report/ endpoint
 
+use crate::Unit;
 use serde::{Deserialize, Serialize};
 
 use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
+use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::{DateTime, PayloadType, TargetMap, Unit};
+use crate::wire::DateTime;
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -96,7 +98,7 @@ pub struct Resource {
     /// User generated identifier. A value of AGGREGATED_REPORT indicates an aggregation of more
     /// that one resource's data
     // TODO: handle special name and length validation
-    pub resource_name: crate::ResourceName,
+    pub resource_name: ResourceName,
     /// Defines default start and durations of intervals.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_period: Option<IntervalPeriod>,
@@ -106,7 +108,7 @@ pub struct Resource {
 
 impl Resource {
     /// Report data associated with a resource.
-    pub fn new(resource_name: crate::ResourceName, intervals: Vec<Interval>) -> Resource {
+    pub fn new(resource_name: ResourceName, intervals: Vec<Interval>) -> Resource {
         Resource {
             resource_name,
             interval_period: None,
@@ -122,10 +124,10 @@ impl Resource {
 #[serde(rename_all = "camelCase")]
 pub struct ReportDescriptor {
     /// Enumerated or private string signifying the nature of values.
-    pub payload_type: crate::ReportType,
+    pub payload_type: ReportType,
     /// Enumerated or private string signifying the type of reading.
-    #[serde(skip_serializing_if = "crate::ReadingType::is_default", default)]
-    pub reading_type: crate::ReadingType,
+    #[serde(skip_serializing_if = "ReadingType::is_default", default)]
+    pub reading_type: ReadingType,
     /// Units of measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
@@ -154,10 +156,10 @@ pub struct ReportDescriptor {
 
 impl ReportDescriptor {
     /// An object that may be used to request a report from a VEN. See OpenADR REST User Guide for detailed description of how configure a report request.
-    pub fn new(payload_type: crate::ReportType) -> Self {
+    pub fn new(payload_type: ReportType) -> Self {
         Self {
             payload_type,
-            reading_type: crate::ReadingType::default(),
+            reading_type: ReadingType::default(),
             units: None,
             targets: None,
             aggregate: false,
@@ -193,10 +195,10 @@ fn pos_one() -> i32 {
 #[serde(rename_all = "camelCase")]
 pub struct ReportPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
-    pub payload_type: PayloadType,
+    pub payload_type: ReportType,
     /// Enumerated or private string signifying the type of reading.
-    #[serde(skip_serializing_if = "crate::ReadingType::is_default", default)]
-    pub reading_type: crate::ReadingType,
+    #[serde(skip_serializing_if = "ReadingType::is_default", default)]
+    pub reading_type: ReadingType,
     /// Units of measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
@@ -209,7 +211,7 @@ pub struct ReportPayloadDescriptor {
 }
 
 impl ReportPayloadDescriptor {
-    pub fn new(payload_type: PayloadType) -> Self {
+    pub fn new(payload_type: ReportType) -> Self {
         Self {
             payload_type,
             reading_type: Default::default(),
@@ -253,7 +255,7 @@ impl ReportInterval {
 pub struct ReportValuesMap {
     /// Enumerated or private string signifying the nature of values. E.G. \"PRICE\" indicates value is to be interpreted as a currency.
     #[serde(rename = "type")]
-    pub value_type: crate::ReportType,
+    pub value_type: ReportType,
     /// A list of data points. Most often a singular value such as a price.
     // TODO: The type of Value is actually defined by value_type
     pub values: Vec<Value>,
@@ -267,9 +269,58 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_report_type_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ReportType::Baseline).unwrap(),
+            r#""BASELINE""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ReportType::RegulationSetpoint).unwrap(),
+            r#""REGULATION_SETPOINT""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ReportType::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<ReportType>(r#""DEMAND""#).unwrap(),
+            ReportType::Demand
+        );
+        assert_eq!(
+            serde_json::from_str::<ReportType>(r#""EXPORT_RESERVATION_FEE""#).unwrap(),
+            ReportType::ExportReservationFee
+        );
+        assert_eq!(
+            serde_json::from_str::<ReportType>(r#""something else""#).unwrap(),
+            ReportType::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
+    fn test_reading_type_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ReadingType::DirectRead).unwrap(),
+            r#""DIRECT_READ""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ReadingType::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<ReadingType>(r#""AVERAGE""#).unwrap(),
+            ReadingType::Average
+        );
+        assert_eq!(
+            serde_json::from_str::<ReadingType>(r#""something else""#).unwrap(),
+            ReadingType::Private(String::from("something else"))
+        );
+    }
+
+    #[test]
     fn descriptor_parses_minimal() {
         let json = r#"{"payloadType":"hello"}"#;
-        let expected = ReportDescriptor::new(crate::ReportType::Private("hello".into()));
+        let expected =
+            ReportDescriptor::new(crate::wire::report::ReportType::Private("hello".into()));
 
         assert_eq!(
             serde_json::from_str::<ReportDescriptor>(json).unwrap(),
@@ -288,6 +339,26 @@ mod tests {
         );
 
         assert_eq!(serde_json::from_str::<Report>(example).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_resource_name_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ResourceName::AggregatedReport).unwrap(),
+            r#""AGGREGATED_REPORT""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ResourceName::Private(String::from("something else"))).unwrap(),
+            r#""something else""#
+        );
+        assert_eq!(
+            serde_json::from_str::<ResourceName>(r#""AGGREGATED_REPORT""#).unwrap(),
+            ResourceName::AggregatedReport
+        );
+        assert_eq!(
+            serde_json::from_str::<ResourceName>(r#""something else""#).unwrap(),
+            ResourceName::Private(String::from("something else"))
+        );
     }
 
     #[test]
@@ -341,7 +412,7 @@ mod tests {
             report_name: Some("Battery_usage_04112023".into()),
             payload_descriptors: None,
             resources: vec![Resource {
-                resource_name: crate::ResourceName::Private("RESOURCE-999".into()),
+                resource_name: ResourceName::Private("RESOURCE-999".into()),
                 interval_period: Some(IntervalPeriod {
                     start: DateTime("2023-06-15T09:30:00Z".into()),
                     duration: Some(Duration("PT1H".into())),
@@ -367,4 +438,64 @@ mod tests {
             expected
         );
     }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ReportType {
+    Reading,
+    Usage,
+    Demand,
+    Setpoint,
+    DeltaUsage,
+    Baseline,
+    OperatingState,
+    UpRegulationAvailable,
+    DownRegulationAvailable,
+    RegulationSetpoint,
+    StorageUsableCapacity,
+    StorageChargeLevel,
+    StorageMaxDischargePower,
+    StorageMaxChargePower,
+    SimpleLevel,
+    UsageForecast,
+    StorageDispatchForecast,
+    LoadShedDeltaAvailable,
+    GenerationDeltaAvailable,
+    DataQuality,
+    ImportReservationCapacity,
+    ImportReservationFee,
+    ExportReservationCapacity,
+    ExportReservationFee,
+    #[serde(untagged)]
+    Private(String),
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ReadingType {
+    #[default]
+    DirectRead,
+    Estimated,
+    Summed,
+    Mean,
+    Peak,
+    Forecast,
+    Average,
+    #[serde(untagged)]
+    Private(String),
+}
+
+impl ReadingType {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ResourceName {
+    AggregatedReport,
+    #[serde(untagged)]
+    Private(String),
 }

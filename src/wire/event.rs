@@ -1,12 +1,13 @@
 //! Types used for the event/ endpoint
 
-use serde::{Deserialize, Serialize};
-
 use crate::wire::interval::IntervalPeriod;
 use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
+use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::{Currency, DateTime, TargetMap, Unit};
+use crate::wire::{Currency, DateTime};
+use crate::Unit;
+use serde::{Deserialize, Serialize};
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -99,7 +100,7 @@ pub enum EventObjectType {
 #[serde(rename_all = "camelCase")]
 pub struct EventPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
-    pub payload_type: crate::Event,
+    pub payload_type: EventType,
     /// Units of measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
@@ -109,7 +110,7 @@ pub struct EventPayloadDescriptor {
 }
 
 impl EventPayloadDescriptor {
-    pub fn new(payload_type: crate::Event) -> Self {
+    pub fn new(payload_type: EventType) -> Self {
         Self {
             payload_type,
             units: None,
@@ -147,7 +148,7 @@ impl EventInterval {
 pub struct EventValuesMap {
     /// Enumerated or private string signifying the nature of values. E.G. \"PRICE\" indicates value is to be interpreted as a currency.
     #[serde(rename = "type")]
-    pub value_type: crate::Event,
+    pub value_type: EventType,
     /// A list of data points. Most often a singular value such as a price.
     // TODO: The type of Value is actually defined by value_type
     pub values: Vec<Value>,
@@ -159,6 +160,26 @@ mod tests {
     use crate::wire::Duration;
 
     use super::*;
+
+    #[test]
+    fn test_event_serialization() {
+        assert_eq!(
+            serde_json::to_string(&EventType::Simple).unwrap(),
+            r#""SIMPLE""#
+        );
+        assert_eq!(
+            serde_json::to_string(&EventType::CTA2045Reboot).unwrap(),
+            r#""CTA2045_REBOOT""#
+        );
+        assert_eq!(
+            serde_json::from_str::<EventType>(r#""GHG""#).unwrap(),
+            EventType::GHG
+        );
+        assert_eq!(
+            serde_json::from_str::<EventType>(r#""something else""#).unwrap(),
+            EventType::Private(String::from("something else"))
+        );
+    }
 
     #[test]
     fn parse_minimal() {
@@ -231,7 +252,7 @@ mod tests {
                     randomize_start: Some(Duration("PT1H".into())),
                 }),
                 payloads: vec![EventValuesMap {
-                    value_type: crate::Event::Price,
+                    value_type: EventType::Price,
                     values: vec![Value::Number(0.17)],
                 }],
             }],
@@ -242,4 +263,49 @@ mod tests {
             expected
         );
     }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EventType {
+    Simple,
+    Price,
+    ChargeStateSetpoint,
+    DispatchSetpoint,
+    DispatchSetpointRelative,
+    ControlSetpoint,
+    ExportPrice,
+    #[serde(rename = "GHG")]
+    GHG,
+    Curve,
+    #[serde(rename = "OLS")]
+    OLS,
+    ImportCapacitySubscription,
+    ImportCapacityReservation,
+    ImportCapacityReservationFee,
+    ImportCapacityAvailable,
+    ImportCapacityAvailablePrice,
+    ExportCapacitySubscription,
+    ExportCapacityReservation,
+    ExportCapacityReservationFee,
+    ExportCapacityAvailable,
+    ExportCapacityAvailablePrice,
+    ImportCapacityLimit,
+    ExportCapacityLimit,
+    AlertGridEmergency,
+    AlertBlackStart,
+    AlertPossibleOutage,
+    AlertFlexAlert,
+    AlertFire,
+    AlertFreezing,
+    AlertWind,
+    AlertTsunami,
+    AlertAirQuality,
+    AlertOther,
+    #[serde(rename = "CTA2045_REBOOT")]
+    CTA2045Reboot,
+    #[serde(rename = "CTA2045_SET_OVERRIDE_STATUS")]
+    CTA2045SetOverrideStatus,
+    #[serde(untagged)]
+    Private(String),
 }
