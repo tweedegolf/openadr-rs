@@ -1,7 +1,7 @@
 /*
  * OpenADR 3 API
  *
- * The OpenADR 3 API supports energy retailer to energy customer Demand Response programs. The API includes the following capabilities and operations:  __Manage programs:__  * Create/Update/Delete a program * Search programs  __Manage events:__  * Create/Update/Delete an event * Search events  __Manage reports:__  * Create/Update/Delete a report * Search reports  __Manage subscriptions:__  * Create/Update/Delete subscriptions to programs, events, and reports * Search subscriptions * Subscriptions allows clients to register a callback URL (webhook) to be notified   on the change of state of a resource  __Manage vens:__  * Create/Update/Delete vens and ven resources * Search ven and ven resources  __Manage tokens:__  * Obtain an access token * This endpoint is provided as a convenience and may be neglected in a commercial implementation 
+ * The OpenADR 3 API supports energy retailer to energy customer Demand Response programs. The API includes the following capabilities and operations:  __Manage programs:__  * Create/Update/Delete a program * Search programs  __Manage events:__  * Create/Update/Delete an event * Search events  __Manage reports:__  * Create/Update/Delete a report * Search reports  __Manage subscriptions:__  * Create/Update/Delete subscriptions to programs, events, and reports * Search subscriptions * Subscriptions allows clients to register a callback URL (webhook) to be notified   on the change of state of a resource  __Manage vens:__  * Create/Update/Delete vens and ven resources * Search ven and ven resources  __Manage tokens:__  * Obtain an access token * This endpoint is provided as a convenience and may be neglected in a commercial implementation
  *
  * The version of the OpenAPI document: 3.0.1
  * Contact: frank@pajaritotech.com
@@ -9,11 +9,10 @@
  */
 
 use serde::{Deserialize, Serialize};
-use super::ValuesMap;
+
+use crate::wire::values_map::ValuesMap;
 
 /// ReportDescriptor : An object that may be used to request a report from a VEN. See OpenADR REST User Guide for detailed description of how configure a report request.
-
-
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct ReportDescriptor {
@@ -29,28 +28,28 @@ pub struct ReportDescriptor {
     /// A list of valuesMap objects.
     #[serde(rename = "targets", skip_serializing_if = "Option::is_none")]
     pub targets: Option<Vec<ValuesMap>>,
-    /// True if report should aggregate results from all targeted resources. False if report includes results for each resource. 
+    /// True if report should aggregate results from all targeted resources. False if report includes results for each resource.
     #[serde(rename = "aggregate", skip_serializing_if = "Option::is_none")]
     pub aggregate: Option<bool>,
-    /// The interval on which to generate a report. -1 indicates generate report at end of last interval. 
+    /// The interval on which to generate a report. -1 indicates generate report at end of last interval.
     #[serde(rename = "startInterval", skip_serializing_if = "Option::is_none")]
     pub start_interval: Option<i32>,
-    /// The number of intervals to include in a report. -1 indicates that all intervals are to be included. 
+    /// The number of intervals to include in a report. -1 indicates that all intervals are to be included.
     #[serde(rename = "numIntervals", skip_serializing_if = "Option::is_none")]
     pub num_intervals: Option<i32>,
-    /// True indicates report on intervals preceding startInterval. False indicates report on intervals following startInterval (e.g. forecast). 
+    /// True indicates report on intervals preceding startInterval. False indicates report on intervals following startInterval (e.g. forecast).
     #[serde(rename = "historical", skip_serializing_if = "Option::is_none")]
     pub historical: Option<bool>,
-    /// Number of intervals that elapse between reports. -1 indicates same as numIntervals. 
+    /// Number of intervals that elapse between reports. -1 indicates same as numIntervals.
     #[serde(rename = "frequency", skip_serializing_if = "Option::is_none")]
     pub frequency: Option<i32>,
-    /// Number of times to repeat report. 1 indicates generate one report. -1 indicates repeat indefinitely. 
+    /// Number of times to repeat report. 1 indicates generate one report. -1 indicates repeat indefinitely.
     #[serde(rename = "repeat", skip_serializing_if = "Option::is_none")]
     pub repeat: Option<i32>,
 }
 
 impl ReportDescriptor {
-    /// An object that may be used to request a report from a VEN. See OpenADR REST User Guide for detailed description of how configure a report request. 
+    /// An object that may be used to request a report from a VEN. See OpenADR REST User Guide for detailed description of how configure a report request.
     pub fn new(payload_type: String) -> ReportDescriptor {
         ReportDescriptor {
             payload_type,
@@ -66,5 +65,3 @@ impl ReportDescriptor {
         }
     }
 }
-
-
