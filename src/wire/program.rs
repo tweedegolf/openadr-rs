@@ -1,3 +1,5 @@
+//! Types used for the program/ endpoint
+
 use serde::{Deserialize, Serialize};
 
 use crate::wire::{DateTime, Duration};

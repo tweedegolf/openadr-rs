@@ -1,3 +1,5 @@
+//! Descriptions of temporal periods
+
 use serde::{Deserialize, Serialize};
 
 use crate::wire::{DateTime, Duration};
