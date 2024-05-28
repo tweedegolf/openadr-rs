@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
+use crate::wire::values_map::Value;
 use crate::wire::{DateTime, PayloadType, TargetMap, Unit};
 
 /// report object.
@@ -222,6 +223,41 @@ impl ReportPayloadDescriptor {
 // TODO: Add range checks
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Confidence(u8);
+
+/// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
+/// temporal aspects of interval or override event.intervalPeriod.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportInterval {
+    /// A client generated number assigned an interval object. Not a sequence number.
+    pub id: i32,
+    /// Defines default start and durations of intervals.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval_period: Option<IntervalPeriod>,
+    /// A list of valuesMap objects.
+    pub payloads: Vec<ReportValuesMap>,
+}
+
+impl ReportInterval {
+    pub fn new(id: i32, payloads: Vec<ReportValuesMap>) -> Self {
+        Self {
+            id,
+            interval_period: None,
+            payloads,
+        }
+    }
+}
+
+/// Represents one or more values associated with a type. E.g. a type of PRICE contains a single float value.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ReportValuesMap {
+    /// Enumerated or private string signifying the nature of values. E.G. \"PRICE\" indicates value is to be interpreted as a currency.
+    #[serde(rename = "type")]
+    pub value_type: crate::ReportType,
+    /// A list of data points. Most often a singular value such as a price.
+    // TODO: The type of Value is actually defined by value_type
+    pub values: Vec<Value>,
+}
 
 #[cfg(test)]
 mod tests {

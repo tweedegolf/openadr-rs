@@ -2,9 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wire::interval::{Interval, IntervalPeriod};
+use crate::wire::interval::IntervalPeriod;
 use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
+use crate::wire::values_map::Value;
 use crate::wire::{Currency, DateTime, TargetMap, Unit};
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
@@ -47,12 +48,12 @@ pub struct Event {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_period: Option<IntervalPeriod>,
     /// A list of interval objects.
-    pub intervals: Vec<Interval>,
+    pub intervals: Vec<EventInterval>,
 }
 
 impl Event {
     /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets start time and duration of intervals.
-    pub fn new(program_id: ProgramId, intervals: Vec<Interval>) -> Event {
+    pub fn new(program_id: ProgramId, intervals: Vec<EventInterval>) -> Event {
         Event {
             id: None,
             created_date_time: None,
@@ -117,9 +118,44 @@ impl EventPayloadDescriptor {
     }
 }
 
+/// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
+/// temporal aspects of interval or override event.intervalPeriod.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventInterval {
+    /// A client generated number assigned an interval object. Not a sequence number.
+    pub id: i32,
+    /// Defines default start and durations of intervals.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval_period: Option<IntervalPeriod>,
+    /// A list of valuesMap objects.
+    pub payloads: Vec<EventValuesMap>,
+}
+
+impl EventInterval {
+    pub fn new(id: i32, payloads: Vec<EventValuesMap>) -> Self {
+        Self {
+            id,
+            interval_period: None,
+            payloads,
+        }
+    }
+}
+
+/// Represents one or more values associated with a type. E.g. a type of PRICE contains a single float value.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EventValuesMap {
+    /// Enumerated or private string signifying the nature of values. E.G. \"PRICE\" indicates value is to be interpreted as a currency.
+    #[serde(rename = "type")]
+    pub value_type: crate::Event,
+    /// A list of data points. Most often a singular value such as a price.
+    // TODO: The type of Value is actually defined by value_type
+    pub values: Vec<Value>,
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::wire::values_map::{Value, ValueType, ValuesMap};
+    use crate::wire::values_map::Value;
     use crate::wire::Duration;
 
     use super::*;
@@ -187,15 +223,15 @@ mod tests {
                 duration: Some(Duration("PT1H".into())),
                 randomize_start: Some(Duration("PT1H".into())),
             }),
-            intervals: vec![Interval {
+            intervals: vec![EventInterval {
                 id: 0,
                 interval_period: Some(IntervalPeriod {
                     start: DateTime("2023-06-15T09:30:00Z".into()),
                     duration: Some(Duration("PT1H".into())),
                     randomize_start: Some(Duration("PT1H".into())),
                 }),
-                payloads: vec![ValuesMap {
-                    value_type: ValueType("PRICE".into()),
+                payloads: vec![EventValuesMap {
+                    value_type: crate::Event::Price,
                     values: vec![Value::Number(0.17)],
                 }],
             }],
