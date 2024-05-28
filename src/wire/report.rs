@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wire::{DateTime, PayloadType, Unit};
 use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::values_map::ValuesMap;
+use crate::wire::{DateTime, PayloadType, Unit};
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -233,8 +233,8 @@ pub struct Confidence(u8);
 
 #[cfg(test)]
 mod tests {
-    use crate::wire::Duration;
     use crate::wire::values_map::{Value, ValueType};
+    use crate::wire::Duration;
 
     use super::*;
 

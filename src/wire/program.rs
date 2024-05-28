@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wire::{DateTime, Duration};
 use crate::wire::event::EventPayloadDescriptor;
 use crate::wire::interval::IntervalPeriod;
 use crate::wire::report::ReportPayloadDescriptor;
 use crate::wire::values_map::ValuesMap;
+use crate::wire::{DateTime, Duration};
 
 pub type Programs = Vec<Program>;
 

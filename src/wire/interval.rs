@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wire::{DateTime, Duration};
 use crate::wire::values_map::ValuesMap;
+use crate::wire::{DateTime, Duration};
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.

@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::wire::{Currency, DateTime, PayloadType, Unit};
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
 use crate::wire::values_map::ValuesMap;
+use crate::wire::{Currency, DateTime, PayloadType, Unit};
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -120,8 +120,8 @@ impl EventPayloadDescriptor {
 
 #[cfg(test)]
 mod tests {
-    use crate::wire::Duration;
     use crate::wire::values_map::{Value, ValueType};
+    use crate::wire::Duration;
 
     use super::*;
 
