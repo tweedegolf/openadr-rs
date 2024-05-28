@@ -1,3 +1,5 @@
+//! Types used for the event/ endpoint
+
 use serde::{Deserialize, Serialize};
 
 use crate::wire::{Currency, DateTime, PayloadType, Unit};

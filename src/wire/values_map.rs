@@ -1,3 +1,5 @@
+//! Helper types to realize type values relations
+
 use serde::{Deserialize, Serialize};
 
 /// ValuesMap : Represents one or more values associated with a type. E.g. a type of PRICE contains a single float value.

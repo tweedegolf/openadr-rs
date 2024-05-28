@@ -1,3 +1,5 @@
+//! Types used for the report/ endpoint
+
 use serde::{Deserialize, Serialize};
 
 use crate::wire::{DateTime, PayloadType, Unit};
