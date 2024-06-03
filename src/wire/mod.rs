@@ -2,11 +2,13 @@
 use serde::{Deserialize, Serialize};
 
 pub use event::Event;
+pub use problem::Problem;
 pub use program::Program;
 pub use report::Report;
 
 pub mod event;
 pub mod interval;
+mod problem;
 pub mod program;
 pub mod report;
 pub mod target;

@@ -10,7 +10,7 @@ use crate::wire::{DateTime, Duration};
 
 pub type Programs = Vec<Program>;
 
-// TODO: This should actaully be split into two flattend structs... one for get and one for put/post
+// TODO: This should actually be split into two flattened structs... one for get and one for put/post
 /// Provides program specific metadata from VTN to VEN.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +120,12 @@ pub struct ProgramId(pub String);
 // TODO: enforce length requirement
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProgramName(String);
+
+impl ProgramName {
+    pub fn new(name: String) -> Self {
+        Self(name)
+    }
+}
 
 /// Used as discriminator, e.g. notification.object
 #[derive(
