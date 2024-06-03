@@ -1,13 +1,12 @@
 //! Types used for the program/ endpoint
 
-use crate::Target;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use crate::wire::event::EventPayloadDescriptor;
 use crate::wire::interval::IntervalPeriod;
 use crate::wire::report::ReportPayloadDescriptor;
-use crate::wire::target::TargetMap;
+use crate::wire::target::{TargetLabel, TargetMap};
 use crate::wire::{DateTime, Duration};
 
 pub type Programs = Vec<Program>;
@@ -156,7 +155,7 @@ pub enum PayloadDescriptor {
 #[derive(Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
-    target_type: Option<Target>,
+    target_type: Option<TargetLabel>,
     target_values: Option<Vec<String>>,
     #[serde(default)]
     skip: u32,

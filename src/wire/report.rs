@@ -7,10 +7,10 @@ use validator::Validate;
 use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
-use crate::wire::values_map::ValuesMap;
-use crate::wire::{DateTime, Pagination, PayloadType};
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
+use crate::wire::values_map::ValuesMap;
+use crate::wire::{DateTime, Pagination, PayloadType};
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

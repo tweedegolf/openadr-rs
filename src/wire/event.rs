@@ -3,10 +3,10 @@
 use crate::wire::interval::IntervalPeriod;
 use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
-use crate::wire::target::TargetMap;
+use crate::wire::target::{TargetLabel, TargetMap};
 use crate::wire::values_map::Value;
 use crate::wire::{Currency, DateTime, Pagination};
-use crate::{Target, Unit};
+use crate::Unit;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -125,7 +125,7 @@ impl EventPayloadDescriptor {
 pub struct QueryParams {
     #[serde(rename = "programID")]
     program_id: Option<ProgramId>,
-    target_type: Option<Target>,
+    target_type: Option<TargetLabel>,
     target_values: Option<Vec<String>>,
     client_name: Option<String>,
     #[serde(flatten)]
