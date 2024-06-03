@@ -1,12 +1,13 @@
 //! Types used for the event/ endpoint
 
-use serde::{Deserialize, Serialize};
-
-use crate::wire::interval::{Interval, IntervalPeriod};
+use crate::wire::interval::IntervalPeriod;
 use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
-use crate::wire::values_map::ValuesMap;
-use crate::wire::{Currency, DateTime, PayloadType, Unit};
+use crate::wire::target::TargetMap;
+use crate::wire::values_map::Value;
+use crate::wire::{Currency, DateTime};
+use crate::Unit;
+use serde::{Deserialize, Serialize};
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -37,7 +38,7 @@ pub struct Event {
     pub priority: Option<u32>,
     /// A list of valuesMap objects.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub targets: Option<Vec<ValuesMap>>,
+    pub targets: Option<TargetMap>,
     /// A list of reportDescriptor objects. Used to request reports from VEN.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub report_descriptors: Option<Vec<ReportDescriptor>>,
@@ -48,12 +49,12 @@ pub struct Event {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_period: Option<IntervalPeriod>,
     /// A list of interval objects.
-    pub intervals: Vec<Interval>,
+    pub intervals: Vec<EventInterval>,
 }
 
 impl Event {
     /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets start time and duration of intervals.
-    pub fn new(program_id: ProgramId, intervals: Vec<Interval>) -> Event {
+    pub fn new(program_id: ProgramId, intervals: Vec<EventInterval>) -> Event {
         Event {
             id: None,
             created_date_time: None,
@@ -62,7 +63,7 @@ impl Event {
             program_id,
             event_name: None,
             priority: None,
-            targets: None,
+            targets: Default::default(),
             report_descriptors: None,
             payload_descriptors: None,
             interval_period: None,
@@ -99,7 +100,7 @@ pub enum EventObjectType {
 #[serde(rename_all = "camelCase")]
 pub struct EventPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
-    pub payload_type: PayloadType,
+    pub payload_type: EventType,
     /// Units of measure.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
@@ -109,7 +110,7 @@ pub struct EventPayloadDescriptor {
 }
 
 impl EventPayloadDescriptor {
-    pub fn new(payload_type: PayloadType) -> Self {
+    pub fn new(payload_type: EventType) -> Self {
         Self {
             payload_type,
             units: None,
@@ -118,12 +119,67 @@ impl EventPayloadDescriptor {
     }
 }
 
+/// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
+/// temporal aspects of interval or override event.intervalPeriod.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventInterval {
+    /// A client generated number assigned an interval object. Not a sequence number.
+    pub id: i32,
+    /// Defines default start and durations of intervals.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval_period: Option<IntervalPeriod>,
+    /// A list of valuesMap objects.
+    pub payloads: Vec<EventValuesMap>,
+}
+
+impl EventInterval {
+    pub fn new(id: i32, payloads: Vec<EventValuesMap>) -> Self {
+        Self {
+            id,
+            interval_period: None,
+            payloads,
+        }
+    }
+}
+
+/// Represents one or more values associated with a type. E.g. a type of PRICE contains a single float value.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EventValuesMap {
+    /// Enumerated or private string signifying the nature of values. E.G. \"PRICE\" indicates value is to be interpreted as a currency.
+    #[serde(rename = "type")]
+    pub value_type: EventType,
+    /// A list of data points. Most often a singular value such as a price.
+    // TODO: The type of Value is actually defined by value_type
+    pub values: Vec<Value>,
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::wire::values_map::{Value, ValueType};
+    use crate::wire::values_map::Value;
     use crate::wire::Duration;
 
     use super::*;
+
+    #[test]
+    fn test_event_serialization() {
+        assert_eq!(
+            serde_json::to_string(&EventType::Simple).unwrap(),
+            r#""SIMPLE""#
+        );
+        assert_eq!(
+            serde_json::to_string(&EventType::CTA2045Reboot).unwrap(),
+            r#""CTA2045_REBOOT""#
+        );
+        assert_eq!(
+            serde_json::from_str::<EventType>(r#""GHG""#).unwrap(),
+            EventType::GHG
+        );
+        assert_eq!(
+            serde_json::from_str::<EventType>(r#""something else""#).unwrap(),
+            EventType::Private(String::from("something else"))
+        );
+    }
 
     #[test]
     fn parse_minimal() {
@@ -180,7 +236,7 @@ mod tests {
             program_id: ProgramId("object-999".into()),
             event_name: Some("price event 11-18-2022".into()),
             priority: Some(0),
-            targets: None,
+            targets: Default::default(),
             report_descriptors: None,
             payload_descriptors: None,
             interval_period: Some(IntervalPeriod {
@@ -188,15 +244,15 @@ mod tests {
                 duration: Some(Duration("PT1H".into())),
                 randomize_start: Some(Duration("PT1H".into())),
             }),
-            intervals: vec![Interval {
+            intervals: vec![EventInterval {
                 id: 0,
                 interval_period: Some(IntervalPeriod {
                     start: DateTime("2023-06-15T09:30:00Z".into()),
                     duration: Some(Duration("PT1H".into())),
                     randomize_start: Some(Duration("PT1H".into())),
                 }),
-                payloads: vec![ValuesMap {
-                    value_type: ValueType("PRICE".into()),
+                payloads: vec![EventValuesMap {
+                    value_type: EventType::Price,
                     values: vec![Value::Number(0.17)],
                 }],
             }],
@@ -207,4 +263,49 @@ mod tests {
             expected
         );
     }
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EventType {
+    Simple,
+    Price,
+    ChargeStateSetpoint,
+    DispatchSetpoint,
+    DispatchSetpointRelative,
+    ControlSetpoint,
+    ExportPrice,
+    #[serde(rename = "GHG")]
+    GHG,
+    Curve,
+    #[serde(rename = "OLS")]
+    OLS,
+    ImportCapacitySubscription,
+    ImportCapacityReservation,
+    ImportCapacityReservationFee,
+    ImportCapacityAvailable,
+    ImportCapacityAvailablePrice,
+    ExportCapacitySubscription,
+    ExportCapacityReservation,
+    ExportCapacityReservationFee,
+    ExportCapacityAvailable,
+    ExportCapacityAvailablePrice,
+    ImportCapacityLimit,
+    ExportCapacityLimit,
+    AlertGridEmergency,
+    AlertBlackStart,
+    AlertPossibleOutage,
+    AlertFlexAlert,
+    AlertFire,
+    AlertFreezing,
+    AlertWind,
+    AlertTsunami,
+    AlertAirQuality,
+    AlertOther,
+    #[serde(rename = "CTA2045_REBOOT")]
+    CTA2045Reboot,
+    #[serde(rename = "CTA2045_SET_OVERRIDE_STATUS")]
+    CTA2045SetOverrideStatus,
+    #[serde(untagged)]
+    Private(String),
 }
