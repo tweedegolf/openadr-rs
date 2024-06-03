@@ -1,14 +1,13 @@
 use crate::error::AppError;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
-use axum::extract::{FromRequest, Query, Request};
+use axum::extract::{FromRequest, FromRequestParts, Query, Request};
 use axum::{async_trait, Json};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-mod event;
-mod program;
-mod report;
+pub mod event;
+pub mod program;
+pub mod report;
 
 pub type AppResponse<T> = Result<Json<T>, AppError>;
 
@@ -35,16 +34,19 @@ where
 }
 
 #[async_trait]
-impl<T, S> FromRequest<S> for ValidatedQuery<T>
+impl<T, S> FromRequestParts<S> for ValidatedQuery<T>
 where
     T: DeserializeOwned + Validate,
     S: Send + Sync,
-    Query<T>: FromRequest<S, Rejection = QueryRejection>,
+    Query<T>: FromRequestParts<S, Rejection = QueryRejection>,
 {
     type Rejection = AppError;
 
-    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
-        let Query(value) = Query::<T>::from_request(req, state).await?;
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let Query(value) = Query::<T>::from_request_parts(parts, state).await?;
         value.validate()?;
         Ok(ValidatedQuery(value))
     }

@@ -1,3 +1,6 @@
+use api::event;
+use api::program;
+use api::report;
 use axum::routing::get;
 use axum::Router;
 use std::sync::Arc;
@@ -28,7 +31,12 @@ async fn main() {
     };
 
     let app = Router::new()
-        // .route("/", get(todo!()))
+        .route("/programs", get(program::get_all))
+        .route("/programs/:id", get(program::get))
+        .route("/reports", get(report::get_all))
+        .route("/reports/:id", get(report::get))
+        .route("/events", get(event::get_all))
+        .route("/events/:id", get(event::get))
         .with_state(state);
 
     let addr = "0.0.0.0:3000";
