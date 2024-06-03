@@ -1,28 +1,31 @@
+use axum::extract::{Path, State};
 use axum::Json;
-use serde::Deserialize;
-use validator::Validate;
 
-use openadr::wire::program::ProgramName;
+use openadr::wire::program::{ProgramId, QueryParams};
 use openadr::wire::Program;
-use openadr::Target;
 
 use crate::api::{AppResponse, ValidatedQuery};
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-struct QueryParams {
-    target_type: Option<Target>,
-    target_values: Option<String>,
-    #[serde(default)]
-    skip: u32,
-    #[validate(range(max = 50))]
-    limit: u8,
-}
+use crate::error::AppError::NotFound;
+use crate::state::AppState;
 
 pub async fn get_all(
+    State(state): State<AppState>,
+    // TODO handle query params
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Program>> {
-    Ok(Json(vec![Program::new(ProgramName::new(
-        "test program".to_string(),
-    ))]))
+    Ok(Json(
+        state.programs.read().await.values().cloned().collect(),
+    ))
+}
+
+pub async fn get(State(state): State<AppState>, Path(id): Path<ProgramId>) -> AppResponse<Program> {
+    Ok(Json(
+        state
+            .programs
+            .read()
+            .await
+            .get(&id)
+            .ok_or(NotFound)?
+            .clone(),
+    ))
 }

@@ -1,6 +1,8 @@
 //! Types used for the program/ endpoint
 
+use crate::Target;
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 use crate::wire::event::EventPayloadDescriptor;
 use crate::wire::interval::IntervalPeriod;
@@ -114,7 +116,7 @@ impl Program {
 //         maxLength: 128
 //         description: URL safe VTN assigned object ID.
 //         example: object-999
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, Hash, Eq)]
 pub struct ProgramId(pub String);
 
 // TODO: enforce length requirement
@@ -149,6 +151,17 @@ pub struct ProgramDescription {
 pub enum PayloadDescriptor {
     EventPayloadDescriptor(EventPayloadDescriptor),
     ReportPayloadDescriptor(ReportPayloadDescriptor),
+}
+
+#[derive(Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryParams {
+    target_type: Option<Target>,
+    target_values: Option<Vec<String>>,
+    #[serde(default)]
+    skip: u32,
+    #[validate(range(max = 50))]
+    limit: u8,
 }
 
 #[cfg(test)]

@@ -5,9 +5,10 @@ use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::{Currency, DateTime};
-use crate::Unit;
+use crate::wire::{Currency, DateTime, Pagination};
+use crate::{Target, Unit};
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -80,7 +81,7 @@ impl Event {
 //         maxLength: 128
 //         description: URL safe VTN assigned object ID.
 //         example: object-999
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, Hash, Eq)]
 pub struct EventId(pub String);
 
 /// Used as discriminator, e.g. notification.object
@@ -117,6 +118,18 @@ impl EventPayloadDescriptor {
             currency: None,
         }
     }
+}
+
+#[derive(Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryParams {
+    #[serde(rename = "programID")]
+    program_id: Option<ProgramId>,
+    target_type: Option<Target>,
+    target_values: Option<Vec<String>>,
+    client_name: Option<String>,
+    #[serde(flatten)]
+    pagination: Pagination,
 }
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set

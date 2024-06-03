@@ -1,5 +1,6 @@
 use axum::routing::get;
 use axum::Router;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{error, info};
@@ -20,7 +21,11 @@ async fn main() {
         .with(EnvFilter::from_default_env())
         .init();
 
-    let state = AppState {};
+    let state = AppState {
+        programs: Arc::new(Default::default()),
+        reports: Arc::new(Default::default()),
+        events: Arc::new(Default::default()),
+    };
 
     let app = Router::new()
         // .route("/", get(todo!()))

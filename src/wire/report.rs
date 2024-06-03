@@ -2,13 +2,15 @@
 
 use crate::Unit;
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 
 use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
+use crate::wire::values_map::ValuesMap;
+use crate::wire::{DateTime, Pagination, PayloadType};
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::DateTime;
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -78,7 +80,7 @@ impl Report {
 //         maxLength: 128
 //         description: URL safe VTN assigned object ID.
 //         example: object-999
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, Hash, Eq)]
 pub struct ReportId(pub String);
 
 /// Used as discriminator, e.g. notification.object
@@ -259,6 +261,19 @@ pub struct ReportValuesMap {
     /// A list of data points. Most often a singular value such as a price.
     // TODO: The type of Value is actually defined by value_type
     pub values: Vec<Value>,
+}
+
+#[derive(Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryParams {
+    #[serde(rename = "programID", default)]
+    program_id: Option<ProgramId>,
+    #[serde(rename = "eventID", default)]
+    event_id: Option<EventId>,
+    #[serde(default)]
+    client_name: Option<String>,
+    #[serde(flatten)]
+    pagination: Pagination,
 }
 
 #[cfg(test)]

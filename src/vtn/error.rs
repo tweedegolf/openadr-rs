@@ -13,6 +13,8 @@ pub enum AppError {
     Json(#[from] JsonRejection),
     #[error("Invalid request: {0}")]
     QueryParams(#[from] QueryRejection),
+    #[error("Object not found")]
+    NotFound,
 }
 
 impl IntoResponse for AppError {
@@ -59,6 +61,16 @@ impl IntoResponse for AppError {
                     title: Some(StatusCode::BAD_REQUEST.to_string()),
                     status: StatusCode::BAD_REQUEST,
                     detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::NotFound => {
+                trace!("Error reference: {}, Object not found", reference,);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::NOT_FOUND.to_string()),
+                    status: StatusCode::NOT_FOUND,
+                    detail: None,
                     instance: Some(reference.to_string()),
                 }
             }

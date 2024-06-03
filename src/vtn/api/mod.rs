@@ -3,6 +3,7 @@ use axum::extract::rejection::{JsonRejection, QueryRejection};
 use axum::extract::{FromRequest, Query, Request};
 use axum::{async_trait, Json};
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 mod event;
