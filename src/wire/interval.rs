@@ -1,9 +1,10 @@
 //! Descriptions of temporal periods
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::wire::values_map::ValuesMap;
-use crate::wire::{DateTime, Duration};
+use crate::wire::Duration;
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.
@@ -35,7 +36,8 @@ impl Interval {
 #[serde(rename_all = "camelCase")]
 pub struct IntervalPeriod {
     /// The start time of an interval or set of intervals.
-    pub start: DateTime,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub start: DateTime<Utc>,
     /// The duration of an interval or set of intervals.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<Duration>,
@@ -45,7 +47,7 @@ pub struct IntervalPeriod {
 }
 
 impl IntervalPeriod {
-    pub fn new(start: DateTime) -> Self {
+    pub fn new(start: DateTime<Utc>) -> Self {
         Self {
             start,
             duration: None,

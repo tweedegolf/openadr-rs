@@ -1,18 +1,19 @@
 //! Types used for the program/ endpoint
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use uuid::Uuid;
 use validator::Validate;
 
 use crate::wire::event::EventPayloadDescriptor;
 use crate::wire::interval::IntervalPeriod;
 use crate::wire::report::ReportPayloadDescriptor;
 use crate::wire::target::{TargetLabel, TargetMap};
-use crate::wire::{DateTime, Duration};
+use crate::wire::Duration;
 
 pub type Programs = Vec<Program>;
 
-// TODO: This should actually be split into two flattened structs... one for get and one for put/post
 /// Provides program specific metadata from VTN to VEN.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,19 +25,32 @@ pub struct Program {
     /// VTN provisioned on object creation.
     ///
     /// datetime in ISO 8601 format
-    pub created_date_time: DateTime,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub created_date_time: DateTime<Utc>,
     /// VTN provisioned on object modification.
     ///
     /// datetime in ISO 8601 format
-    pub modification_date_time: DateTime,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub modification_date_time: DateTime<Utc>,
     #[serde(flatten)]
-    pub content: NewProgram,
+    pub content: ProgramContent,
+}
+
+impl Program {
+    pub fn new(content: ProgramContent) -> Self {
+        Self {
+            id: ProgramId(format!("program-{}", Uuid::new_v4())),
+            created_date_time: Utc::now(),
+            modification_date_time: Utc::now(),
+            content,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
 #[serde(rename_all = "camelCase")]
-pub struct NewProgram {
+pub struct ProgramContent {
     /// Used as discriminator, e.g. notification.object
     ///
     /// VTN provisioned on object creation.
@@ -167,9 +181,9 @@ mod tests {
 
         let expected = vec![Program {
             id: ProgramId("object-999".into()),
-            created_date_time: DateTime("2023-06-15T09:30:00Z".into()),
-            modification_date_time: DateTime("2023-06-15T09:30:00Z".into()),
-            content: NewProgram {
+            created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
+            modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
+            content: ProgramContent {
                 object_type: Some(ProgramObjectType::Program),
                 program_name: ProgramName("ResTOU".into()),
                 program_long_name: Some("Residential Time of Use-A".into()),
@@ -180,7 +194,7 @@ mod tests {
                 principal_subdivision: Some("CO".into()),
                 time_zone_offset: Some(Duration("PT1H".into())),
                 interval_period: Some(IntervalPeriod {
-                    start: DateTime("2023-06-15T09:30:00Z".into()),
+                    start: "2023-06-15T09:30:00Z".parse().unwrap(),
                     duration: Some(Duration("PT1H".into())),
                     randomize_start: Some(Duration("PT1H".into())),
                 }),
@@ -200,8 +214,8 @@ mod tests {
         let example = r#"{"programName":"test"}"#;
 
         assert_eq!(
-            serde_json::from_str::<NewProgram>(example).unwrap(),
-            NewProgram {
+            serde_json::from_str::<ProgramContent>(example).unwrap(),
+            ProgramContent {
                 object_type: None,
                 program_name: ProgramName("test".to_string()),
                 program_long_name: None,

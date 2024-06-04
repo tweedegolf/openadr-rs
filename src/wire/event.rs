@@ -1,7 +1,9 @@
 //! Types used for the event/ endpoint
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use uuid::Uuid;
 use validator::Validate;
 
 use crate::wire::interval::IntervalPeriod;
@@ -9,7 +11,7 @@ use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
 use crate::wire::target::{TargetLabel, TargetMap};
 use crate::wire::values_map::Value;
-use crate::wire::{Currency, DateTime, Pagination};
+use crate::wire::{Currency, Pagination};
 use crate::Unit;
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
@@ -20,17 +22,19 @@ pub struct Event {
     /// URL safe VTN assigned object ID.
     pub id: EventId,
     /// datetime in ISO 8601 format
-    pub created_date_time: DateTime,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub created_date_time: DateTime<Utc>,
     /// datetime in ISO 8601 format
-    pub modification_date_time: DateTime,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub modification_date_time: DateTime<Utc>,
     #[serde(flatten)]
-    pub content: NewEvent,
+    pub content: EventContent,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
 #[serde(rename_all = "camelCase")]
-pub struct NewEvent {
+pub struct EventContent {
     /// Used as discriminator, e.g. notification.object
     // TODO: remove this?
     pub object_type: Option<EventObjectType>,
@@ -51,6 +55,17 @@ pub struct NewEvent {
     pub interval_period: Option<IntervalPeriod>,
     /// A list of interval objects.
     pub intervals: Vec<EventInterval>,
+}
+
+impl Event {
+    pub fn new(content: EventContent) -> Self {
+        Self {
+            id: EventId(format!("event-{}", Uuid::new_v4())),
+            created_date_time: Utc::now(),
+            modification_date_time: Utc::now(),
+            content,
+        }
+    }
 }
 
 // TODO enforce constraints:
@@ -222,8 +237,8 @@ mod tests {
     fn parse_minimal() {
         let example = r#"{"programID":"foo","intervals":[]}"#;
         assert_eq!(
-            serde_json::from_str::<NewEvent>(example).unwrap(),
-            NewEvent {
+            serde_json::from_str::<EventContent>(example).unwrap(),
+            EventContent {
                 object_type: None,
                 program_id: ProgramId("foo".into()),
                 event_name: None,
@@ -277,9 +292,9 @@ mod tests {
 
         let expected = Event {
             id: EventId("object-999-foo".into()),
-            created_date_time: DateTime("2023-06-15T09:30:00Z".into()),
-            modification_date_time: DateTime("2023-06-15T09:30:00Z".into()),
-            content: NewEvent {
+            created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
+            modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
+            content: EventContent {
                 object_type: Some(EventObjectType::Event),
                 program_id: ProgramId("object-999".into()),
                 event_name: Some("price event 11-18-2022".into()),
@@ -288,14 +303,14 @@ mod tests {
                 report_descriptors: None,
                 payload_descriptors: None,
                 interval_period: Some(IntervalPeriod {
-                    start: DateTime("2023-06-15T09:30:00Z".into()),
+                    start: "2023-06-15T09:30:00Z".parse().unwrap(),
                     duration: Some(Duration("PT1H".into())),
                     randomize_start: Some(Duration("PT1H".into())),
                 }),
                 intervals: vec![EventInterval {
                     id: 0,
                     interval_period: Some(IntervalPeriod {
-                        start: DateTime("2023-06-15T09:30:00Z".into()),
+                        start: "2023-06-15T09:30:00Z".parse().unwrap(),
                         duration: Some(Duration("PT1H".into())),
                         randomize_start: Some(Duration("PT1H".into())),
                     }),

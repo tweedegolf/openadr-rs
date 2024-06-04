@@ -1,15 +1,17 @@
-use api::event;
-use api::program;
-use api::report;
+use std::sync::Arc;
+
 use axum::routing::get;
 use axum::Router;
-use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
+
+use api::event;
+use api::program;
+use api::report;
 
 use crate::state::AppState;
 
@@ -31,12 +33,21 @@ async fn main() {
     };
 
     let app = Router::new()
-        .route("/programs", get(program::get_all))
-        .route("/programs/:id", get(program::get))
-        .route("/reports", get(report::get_all))
-        .route("/reports/:id", get(report::get))
-        .route("/events", get(event::get_all))
-        .route("/events/:id", get(event::get))
+        .route("/programs", get(program::get_all).post(program::add))
+        .route(
+            "/programs/:id",
+            get(program::get).put(program::edit).delete(program::delete),
+        )
+        .route("/reports", get(report::get_all).post(report::add))
+        .route(
+            "/reports/:id",
+            get(report::get).put(report::edit).delete(report::delete),
+        )
+        .route("/events", get(event::get_all).post(event::add))
+        .route(
+            "/events/:id",
+            get(event::get).put(event::edit).put(event::delete),
+        )
         .with_state(state);
 
     let addr = "0.0.0.0:3000";

@@ -1,7 +1,9 @@
 //! Types used for the report/ endpoint
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use uuid::Uuid;
 use validator::Validate;
 
 use crate::wire::event::EventId;
@@ -9,7 +11,7 @@ use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::{DateTime, Pagination};
+use crate::wire::Pagination;
 use crate::Unit;
 
 /// report object.
@@ -19,17 +21,19 @@ pub struct Report {
     /// URL safe VTN assigned object ID.
     pub id: ReportId,
     /// datetime in ISO 8601 format
-    pub created_date_time: DateTime,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub created_date_time: DateTime<Utc>,
     /// datetime in ISO 8601 format
-    pub modification_date_time: DateTime,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub modification_date_time: DateTime<Utc>,
     #[serde(flatten)]
-    pub content: NewReport,
+    pub content: ReportContent,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
 #[serde(rename_all = "camelCase")]
-pub struct NewReport {
+pub struct ReportContent {
     /// Used as discriminator, e.g. notification.object
     pub object_type: Option<ObjectType>,
     // FIXME Must likely bei EITHER a programID OR an eventID
@@ -50,6 +54,17 @@ pub struct NewReport {
     pub payload_descriptors: Option<Vec<ReportPayloadDescriptor>>,
     /// A list of objects containing report data for a set of resources.
     pub resources: Vec<Resource>,
+}
+
+impl Report {
+    pub fn new(content: ReportContent) -> Self {
+        Self {
+            id: ReportId(format!("report-{}", Uuid::new_v4())),
+            created_date_time: Utc::now(),
+            modification_date_time: Utc::now(),
+            content,
+        }
+    }
 }
 
 // TODO enforce constraints:
@@ -323,7 +338,7 @@ mod tests {
     #[test]
     fn parses_minimal_report() {
         let example = r#"{"programID":"p1","eventID":"e1","clientName":"c","resources":[]}"#;
-        let expected = NewReport {
+        let expected = ReportContent {
             object_type: None,
             program_id: ProgramId("p1".into()),
             event_id: EventId("e1".into()),
@@ -334,7 +349,7 @@ mod tests {
         };
 
         assert_eq!(
-            serde_json::from_str::<NewReport>(example).unwrap(),
+            serde_json::from_str::<ReportContent>(example).unwrap(),
             expected
         );
     }
@@ -401,9 +416,9 @@ mod tests {
 
         let expected = Report {
             id: ReportId("object-999".into()),
-            created_date_time: DateTime("2023-06-15T09:30:00Z".into()),
-            modification_date_time: DateTime("2023-06-15T09:30:00Z".into()),
-            content: NewReport {
+            created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
+            modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
+            content: ReportContent {
                 object_type: Some(ObjectType::Report),
                 program_id: ProgramId("object-999".into()),
                 event_id: EventId("object-999".into()),
@@ -413,14 +428,14 @@ mod tests {
                 resources: vec![Resource {
                     resource_name: ResourceName::Private("RESOURCE-999".into()),
                     interval_period: Some(IntervalPeriod {
-                        start: DateTime("2023-06-15T09:30:00Z".into()),
+                        start: "2023-06-15T09:30:00Z".parse().unwrap(),
                         duration: Some(Duration("PT1H".into())),
                         randomize_start: Some(Duration("PT1H".into())),
                     }),
                     intervals: vec![Interval {
                         id: 0,
                         interval_period: Some(IntervalPeriod {
-                            start: DateTime("2023-06-15T09:30:00Z".into()),
+                            start: "2023-06-15T09:30:00Z".parse().unwrap(),
                             duration: Some(Duration("PT1H".into())),
                             randomize_start: Some(Duration("PT1H".into())),
                         }),
