@@ -50,7 +50,7 @@ jobs:
           targets: "${{ matrix.target }}"
 
       - name: Install cross-compilation tools
-        uses: taiki-e/setup-cross-toolchain-action@0e38473b0c562d6db19a98d3ec20a80f7ac189ae # v1.21.1
+        uses: taiki-e/setup-cross-toolchain-action@241e9bf5f01f63286a020946ddaa3fd6d9c32cca # v1.22.0
         with:
           target: ${{ matrix.target }}
 
