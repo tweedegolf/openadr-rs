@@ -1,71 +1,68 @@
 //! Types used for the report/ endpoint
 
-use crate::Unit;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
+use uuid::Uuid;
+use validator::Validate;
 
 use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::DateTime;
+use crate::wire::Pagination;
+use crate::Unit;
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Report {
     /// URL safe VTN assigned object ID.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<ReportId>,
+    pub id: ReportId,
     /// datetime in ISO 8601 format
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub created_date_time: Option<DateTime>,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub created_date_time: DateTime<Utc>,
     /// datetime in ISO 8601 format
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub modification_date_time: Option<DateTime>,
+    #[serde(with = "crate::wire::serde_rfc3339")]
+    pub modification_date_time: DateTime<Utc>,
+    #[serde(flatten)]
+    pub content: ReportContent,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[skip_serializing_none]
+#[serde(rename_all = "camelCase")]
+pub struct ReportContent {
     /// Used as discriminator, e.g. notification.object
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub object_type: Option<ObjectType>,
-    /// ID attribute of program object this report is associated with.
+    // FIXME Must likely bei EITHER a programID OR an eventID
+    /// ID attribute of the program object this report is associated with.
     #[serde(rename = "programID")]
     pub program_id: ProgramId,
-    /// ID attribute of event object this report is associated with.
+    /// ID attribute of the event object this report is associated with.
     #[serde(rename = "eventID")]
     pub event_id: EventId,
     /// User generated identifier; may be VEN ID provisioned during program enrollment.
     // TODO: handle length validation 1..=128
     pub client_name: String,
     /// User defined string for use in debugging or User Interface.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub report_name: Option<String>,
     /// A list of reportPayloadDescriptors.
     ///
     /// An optional list of objects that provide context to payload types.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub payload_descriptors: Option<Vec<ReportPayloadDescriptor>>,
     /// A list of objects containing report data for a set of resources.
     pub resources: Vec<Resource>,
 }
 
 impl Report {
-    /// report object.
-    pub fn new(
-        program_id: ProgramId,
-        event_id: EventId,
-        client_name: String,
-        resources: Vec<Resource>,
-    ) -> Report {
-        Report {
-            id: None,
-            created_date_time: None,
-            modification_date_time: None,
-            object_type: None,
-            program_id,
-            event_id,
-            client_name,
-            report_name: None,
-            payload_descriptors: None,
-            resources,
+    pub fn new(content: ReportContent) -> Self {
+        Self {
+            id: ReportId(format!("report-{}", Uuid::new_v4())),
+            created_date_time: Utc::now(),
+            modification_date_time: Utc::now(),
+            content,
         }
     }
 }
@@ -78,7 +75,7 @@ impl Report {
 //         maxLength: 128
 //         description: URL safe VTN assigned object ID.
 //         example: object-999
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, Hash, Eq)]
 pub struct ReportId(pub String);
 
 /// Used as discriminator, e.g. notification.object
@@ -121,18 +118,17 @@ impl Resource {
 /// detailed description of how configure a report request.
 // TODO: replace "-1 means" with proper enum
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[skip_serializing_none]
 #[serde(rename_all = "camelCase")]
 pub struct ReportDescriptor {
     /// Enumerated or private string signifying the nature of values.
     pub payload_type: ReportType,
     /// Enumerated or private string signifying the type of reading.
-    #[serde(skip_serializing_if = "ReadingType::is_default", default)]
+    #[serde(default)]
     pub reading_type: ReadingType,
     /// Units of measure.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
     /// A list of valuesMap objects.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub targets: Option<TargetMap>,
     /// True if report should aggregate results from all targeted resources. False if report includes results for each resource.
     #[serde(default = "bool_false")]
@@ -192,6 +188,7 @@ fn pos_one() -> i32 {
 /// contains a usage value, an associated descriptor provides necessary context such as units and
 /// data quality.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[skip_serializing_none]
 #[serde(rename_all = "camelCase")]
 pub struct ReportPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
@@ -200,13 +197,10 @@ pub struct ReportPayloadDescriptor {
     #[serde(skip_serializing_if = "ReadingType::is_default", default)]
     pub reading_type: ReadingType,
     /// Units of measure.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub units: Option<Unit>,
     /// A quantification of the accuracy of a set of payload values.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub accuracy: Option<f32>,
     /// A quantification of the confidence in a set of payload values.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<Confidence>,
 }
 
@@ -229,12 +223,12 @@ pub struct Confidence(u8);
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[skip_serializing_none]
 #[serde(rename_all = "camelCase")]
 pub struct ReportInterval {
     /// A client generated number assigned an interval object. Not a sequence number.
     pub id: i32,
     /// Defines default start and durations of intervals.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_period: Option<IntervalPeriod>,
     /// A list of valuesMap objects.
     pub payloads: Vec<ReportValuesMap>,
@@ -259,6 +253,19 @@ pub struct ReportValuesMap {
     /// A list of data points. Most often a singular value such as a price.
     // TODO: The type of Value is actually defined by value_type
     pub values: Vec<Value>,
+}
+
+#[derive(Serialize, Deserialize, Validate)]
+#[skip_serializing_none]
+#[serde(rename_all = "camelCase")]
+pub struct QueryParams {
+    #[serde(rename = "programID")]
+    program_id: Option<ProgramId>,
+    #[serde(rename = "eventID")]
+    event_id: Option<EventId>,
+    client_name: Option<String>,
+    #[serde(flatten)]
+    pagination: Pagination,
 }
 
 #[cfg(test)]
@@ -331,14 +338,20 @@ mod tests {
     #[test]
     fn parses_minimal_report() {
         let example = r#"{"programID":"p1","eventID":"e1","clientName":"c","resources":[]}"#;
-        let expected = Report::new(
-            ProgramId("p1".into()),
-            EventId("e1".into()),
-            "c".into(),
-            vec![],
-        );
+        let expected = ReportContent {
+            object_type: None,
+            program_id: ProgramId("p1".into()),
+            event_id: EventId("e1".into()),
+            client_name: "c".to_string(),
+            report_name: None,
+            payload_descriptors: None,
+            resources: vec![],
+        };
 
-        assert_eq!(serde_json::from_str::<Report>(example).unwrap(), expected);
+        assert_eq!(
+            serde_json::from_str::<ReportContent>(example).unwrap(),
+            expected
+        );
     }
 
     #[test]
@@ -402,35 +415,37 @@ mod tests {
           }]"#;
 
         let expected = Report {
-            id: Some(ReportId("object-999".into())),
-            created_date_time: Some(DateTime("2023-06-15T09:30:00Z".into())),
-            modification_date_time: Some(DateTime("2023-06-15T09:30:00Z".into())),
-            object_type: Some(ObjectType::Report),
-            program_id: ProgramId("object-999".into()),
-            event_id: EventId("object-999".into()),
-            client_name: "VEN-999".into(),
-            report_name: Some("Battery_usage_04112023".into()),
-            payload_descriptors: None,
-            resources: vec![Resource {
-                resource_name: ResourceName::Private("RESOURCE-999".into()),
-                interval_period: Some(IntervalPeriod {
-                    start: DateTime("2023-06-15T09:30:00Z".into()),
-                    duration: Some(Duration("PT1H".into())),
-                    randomize_start: Some(Duration("PT1H".into())),
-                }),
-                intervals: vec![Interval {
-                    id: 0,
+            id: ReportId("object-999".into()),
+            created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
+            modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
+            content: ReportContent {
+                object_type: Some(ObjectType::Report),
+                program_id: ProgramId("object-999".into()),
+                event_id: EventId("object-999".into()),
+                client_name: "VEN-999".into(),
+                report_name: Some("Battery_usage_04112023".into()),
+                payload_descriptors: None,
+                resources: vec![Resource {
+                    resource_name: ResourceName::Private("RESOURCE-999".into()),
                     interval_period: Some(IntervalPeriod {
-                        start: DateTime("2023-06-15T09:30:00Z".into()),
+                        start: "2023-06-15T09:30:00Z".parse().unwrap(),
                         duration: Some(Duration("PT1H".into())),
                         randomize_start: Some(Duration("PT1H".into())),
                     }),
-                    payloads: vec![ValuesMap {
-                        value_type: ValueType("PRICE".into()),
-                        values: vec![Value::Number(0.17)],
+                    intervals: vec![Interval {
+                        id: 0,
+                        interval_period: Some(IntervalPeriod {
+                            start: "2023-06-15T09:30:00Z".parse().unwrap(),
+                            duration: Some(Duration("PT1H".into())),
+                            randomize_start: Some(Duration("PT1H".into())),
+                        }),
+                        payloads: vec![ValuesMap {
+                            value_type: ValueType("PRICE".into()),
+                            values: vec![Value::Number(0.17)],
+                        }],
                     }],
                 }],
-            }],
+            },
         };
 
         assert_eq!(

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod generated;
 pub mod wire;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OperatingState {
     Normal,
