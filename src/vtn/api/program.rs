@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::collections::hash_map::Entry;
 
 use axum::extract::{Path, State};
@@ -5,7 +6,7 @@ use axum::Json;
 use chrono::Utc;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use tracing::trace;
+use tracing::{debug, trace};
 use validator::Validate;
 
 use openadr::wire::program::{ProgramContent, ProgramId};
@@ -34,10 +35,12 @@ pub async fn get_all(
             Err(err) => Some(Err(err)),
         })
         .collect::<Result<Vec<_>, AppError>>()?;
+    
+    trace!("filtered programs: {:?}", programs);
 
     Ok(Json(
         programs
-            .get(query_params.skip as usize..(query_params.skip + query_params.limit) as usize)
+            .get(query_params.skip as usize..min((query_params.skip + query_params.limit) as usize, programs.len()))
             .unwrap_or(&[])
             .to_vec(),
     ))
@@ -67,6 +70,7 @@ pub async fn add(
     Json(new_program): Json<ProgramContent>,
 ) -> Result<(StatusCode, Json<Program>), AppError> {
     let program = Program::new(new_program);
+    debug!("created program with name '{}' and id '{}'", program.content.program_name, program.id);
     state
         .programs
         .write()
