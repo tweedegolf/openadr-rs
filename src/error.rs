@@ -1,3 +1,4 @@
+/// Errors that can occur using the [`Client`](crate::Client)
 #[derive(Debug)]
 pub enum Error {
     Reqwest(reqwest::Error),
@@ -47,4 +48,4 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;

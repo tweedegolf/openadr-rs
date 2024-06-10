@@ -6,6 +6,9 @@ use crate::wire::program::{ProgramContent, ProgramId};
 use crate::wire::{target::TargetLabel, Program};
 use crate::Result;
 
+/// Client used for interaction with a VTN.
+///
+/// Can be used to implement both, the VEN and the business logic
 pub struct Client {
     client_ref: Arc<ClientRef>,
 }

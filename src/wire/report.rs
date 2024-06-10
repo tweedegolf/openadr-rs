@@ -1,4 +1,4 @@
-//! Types used for the report/ endpoint
+//! Types used for the `report/` endpoint
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::Unit;
+use crate::wire::Unit;
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
-//! Types used for the program/ endpoint
+//! Types used for the `program/` endpoint
 
 use std::fmt::Display;
 

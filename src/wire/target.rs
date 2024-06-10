@@ -1,3 +1,5 @@
+//! Types to filter resources
+
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 

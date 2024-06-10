@@ -1,4 +1,4 @@
-//! Types used for the event/ endpoint
+//! Types used for the `event/` endpoint
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -11,8 +11,7 @@ use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::Currency;
-use crate::Unit;
+use crate::wire::Unit;
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -118,6 +117,13 @@ impl EventPayloadDescriptor {
             currency: None,
         }
     }
+}
+
+// TODO: Find a nice ISO 4217 crate
+/// A currency described as listed in ISO 4217
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Currency {
+    Todo,
 }
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
