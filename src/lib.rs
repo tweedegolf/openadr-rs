@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-pub mod generated;
-pub mod wire;
 mod client;
 mod error;
+pub mod generated;
+pub mod wire;
 
 pub use client::Client;
 pub use error::*;

@@ -32,19 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     }
     // }
 
-
     // send a report
     // event.send_report(Report {
 
     // }).await?;
 
-
     // program.on_event(|evt| {
 
     // })?;
 
-
     Ok(())
 }
-
-

@@ -1,6 +1,5 @@
 /// Wire format definitions for OpenADR endpoints
 use serde::{Deserialize, Serialize};
-use validator::Validate;
 
 pub use event::Event;
 pub use problem::Problem;
@@ -65,12 +64,3 @@ pub enum Currency {
 // TODO figure out what this is...
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PayloadType(String);
-
-#[derive(Deserialize, Serialize, Debug, Validate)]
-pub struct Pagination {
-    #[serde(default)]
-    pub skip: u32,
-    // TODO how to interpret limit = 0 and what is the default?
-    #[validate(range(max = 50))]
-    pub limit: u32,
-}

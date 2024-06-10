@@ -11,7 +11,6 @@ use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::Pagination;
 use crate::Unit;
 
 /// report object.
@@ -264,9 +263,16 @@ pub struct QueryParams {
     #[serde(rename = "eventID")]
     event_id: Option<EventId>,
     client_name: Option<String>,
-    #[serde(flatten)]
-    #[validate(nested)]
-    pagination: Pagination,
+    #[serde(default)]
+    skip: u32,
+    // TODO how to interpret limit = 0 and what is the default?
+    #[validate(range(max = 50))]
+    #[serde(default = "get_50")]
+    limit: u32,
+}
+
+fn get_50() -> u32 {
+    50
 }
 
 #[cfg(test)]

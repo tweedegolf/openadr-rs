@@ -1,6 +1,7 @@
-use axum::extract::rejection::{JsonRejection, QueryRejection};
+use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use axum_extra::extract::QueryRejection;
 use openadr::wire::Problem;
 use tracing::trace;
 use uuid::Uuid;

@@ -5,11 +5,12 @@ use axum::Json;
 use chrono::Utc;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use tracing::trace;
 use validator::Validate;
 
 use openadr::wire::program::{ProgramContent, ProgramId};
 use openadr::wire::target::TargetLabel;
-use openadr::wire::{Pagination, Program};
+use openadr::wire::Program;
 
 use crate::api::{AppResponse, ValidatedQuery};
 use crate::error::AppError;
@@ -20,6 +21,8 @@ pub async fn get_all(
     State(state): State<AppState>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Program>> {
+    trace!("Received query params: {:?}", query_params);
+
     let programs = state
         .programs
         .read()
@@ -32,11 +35,9 @@ pub async fn get_all(
         })
         .collect::<Result<Vec<_>, AppError>>()?;
 
-    let pagination = query_params.pagination;
-
     Ok(Json(
         programs
-            .get(pagination.skip as usize..(pagination.skip + pagination.limit) as usize)
+            .get(query_params.skip as usize..(query_params.skip + query_params.limit) as usize)
             .unwrap_or(&[])
             .to_vec(),
     ))
@@ -108,14 +109,21 @@ pub async fn delete(
     }
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Deserialize, Validate, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
     target_type: Option<TargetLabel>,
     target_values: Option<Vec<String>>,
-    #[serde(flatten)]
-    #[validate(nested)]
-    pagination: Pagination,
+    #[serde(default)]
+    skip: u32,
+    // TODO how to interpret limit = 0 and what is the default?
+    #[validate(range(max = 50))]
+    #[serde(default = "get_50")]
+    limit: u32,
+}
+
+fn get_50() -> u32 {
+    50
 }
 
 impl QueryParams {

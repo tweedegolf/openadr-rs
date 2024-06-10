@@ -11,7 +11,7 @@ use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
 use crate::wire::target::{TargetLabel, TargetMap};
 use crate::wire::values_map::Value;
-use crate::wire::{Currency, Pagination};
+use crate::wire::Currency;
 use crate::Unit;
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
@@ -122,9 +122,16 @@ pub struct QueryParams {
     target_type: Option<TargetLabel>,
     target_values: Option<Vec<String>>,
     client_name: Option<String>,
-    #[serde(flatten)]
-    #[validate(nested)]
-    pagination: Pagination,
+    #[serde(default)]
+    skip: u32,
+    // TODO how to interpret limit = 0 and what is the default?
+    #[validate(range(max = 50))]
+    #[serde(default = "get_50")]
+    limit: u32,
+}
+
+fn get_50() -> u32 {
+    50
 }
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
