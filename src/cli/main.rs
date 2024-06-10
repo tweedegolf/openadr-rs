@@ -1,6 +1,12 @@
+use openadr::wire::program::ProgramContent;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = openadr::Client::new("http://localhost/openadr/".try_into()?);
+    let client = openadr::Client::new("http://localhost:3000/".try_into()?);
+    let created_program = client.create_program(ProgramContent::new("name")).await?;
+    let created_program_1 = client.create_program(ProgramContent::new("name1")).await?;
+    dbg!(created_program);
+    dbg!(created_program_1);
     let _program = client.get_program_by_name("name").await?;
     // let events = program.get_all_events().await?;
 

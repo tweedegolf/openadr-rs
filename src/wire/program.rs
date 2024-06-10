@@ -92,6 +92,28 @@ pub struct ProgramContent {
     pub targets: Option<TargetMap>,
 }
 
+impl ProgramContent {
+    pub fn new(name: impl ToString) -> ProgramContent {
+        ProgramContent {
+            object_type: Default::default(),
+            program_name: name.to_string(),
+            program_long_name: Default::default(),
+            retailer_name: Default::default(),
+            retailer_long_name: Default::default(),
+            program_type: Default::default(),
+            country: Default::default(),
+            principal_subdivision: Default::default(),
+            time_zone_offset: Default::default(),
+            interval_period: Default::default(),
+            program_descriptions: Default::default(),
+            binding_events: Default::default(),
+            local_price: Default::default(),
+            payload_descriptors: Default::default(),
+            targets: Default::default(),
+        }
+    }
+}
+
 // TODO enforce constraints:
 //     objectID:
 //         type: string

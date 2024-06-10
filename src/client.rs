@@ -10,6 +10,7 @@ pub struct Client {
     client_ref: Arc<ClientRef>,
 }
 
+#[derive(Debug)]
 pub struct ClientRef {
     client: reqwest::Client,
     base_url: url::Url,
@@ -192,6 +193,7 @@ impl Client {
     }
 }
 
+#[derive(Debug)]
 pub struct ProgramClient {
     client: Arc<ClientRef>,
     data: Program,
