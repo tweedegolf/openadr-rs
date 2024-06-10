@@ -69,8 +69,8 @@ pub struct PayloadType(String);
 #[derive(Deserialize, Serialize, Debug, Validate)]
 pub struct Pagination {
     #[serde(default)]
-    skip: u32,
+    pub skip: u32,
     // TODO how to interpret limit = 0 and what is the default?
     #[validate(range(max = 50))]
-    limit: u8,
+    pub limit: u32,
 }

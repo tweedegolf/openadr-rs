@@ -265,6 +265,7 @@ pub struct QueryParams {
     event_id: Option<EventId>,
     client_name: Option<String>,
     #[serde(flatten)]
+    #[validate(nested)]
     pagination: Pagination,
 }
 

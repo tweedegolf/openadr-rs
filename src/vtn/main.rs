@@ -46,7 +46,7 @@ async fn main() {
         .route("/events", get(event::get_all).post(event::add))
         .route(
             "/events/:id",
-            get(event::get).put(event::edit).put(event::delete),
+            get(event::get).put(event::edit).delete(event::delete),
         )
         .with_state(state);
 

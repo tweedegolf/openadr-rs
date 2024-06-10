@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct TargetMap(Vec<TargetEntry>);
@@ -36,17 +37,17 @@ pub enum TargetLabel {
     Private(String),
 }
 
-impl ToString for TargetLabel {
-    fn to_string(&self) -> String {
+impl Display for TargetLabel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TargetLabel::PowerServiceLocation => String::from("POWER_SERVICE_LOCATION"),
-            TargetLabel::ServiceArea => String::from("SERVICE_AREA"),
-            TargetLabel::Group => String::from("GROUP"),
-            TargetLabel::ResourceName => String::from("RESOURCE_NAME"),
-            TargetLabel::VENName => String::from("VEN_NAME"),
-            TargetLabel::EventName => String::from("EVENT_NAME"),
-            TargetLabel::ProgramName => String::from("PROGRAM_NAME"),
-            TargetLabel::Private(s) => s.clone(),
+            TargetLabel::PowerServiceLocation => write!(f, "POWER_SERVICE_LOCATION"),
+            TargetLabel::ServiceArea => write!(f, "SERVICE_AREA"),
+            TargetLabel::Group => write!(f, "GROUP"),
+            TargetLabel::ResourceName => write!(f, "RESOURCE_NAME"),
+            TargetLabel::VENName => write!(f, "VEN_NAME"),
+            TargetLabel::EventName => write!(f, "EVENT_NAME"),
+            TargetLabel::ProgramName => write!(f, "PROGRAM_NAME"),
+            TargetLabel::Private(s) => write!(f, "{}", s),
         }
     }
 }

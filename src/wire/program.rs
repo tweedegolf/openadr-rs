@@ -6,12 +6,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use uuid::Uuid;
-use validator::Validate;
 
 use crate::wire::event::EventPayloadDescriptor;
 use crate::wire::interval::IntervalPeriod;
 use crate::wire::report::ReportPayloadDescriptor;
-use crate::wire::target::{TargetLabel, TargetMap};
+use crate::wire::target::TargetMap;
 use crate::wire::Duration;
 
 pub type Programs = Vec<Program>;
@@ -132,17 +131,6 @@ pub struct ProgramDescription {
 pub enum PayloadDescriptor {
     EventPayloadDescriptor(EventPayloadDescriptor),
     ReportPayloadDescriptor(ReportPayloadDescriptor),
-}
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryParams {
-    target_type: Option<TargetLabel>,
-    target_values: Option<Vec<String>>,
-    #[serde(default)]
-    skip: u32,
-    #[validate(range(max = 50))]
-    limit: u8,
 }
 
 #[cfg(test)]

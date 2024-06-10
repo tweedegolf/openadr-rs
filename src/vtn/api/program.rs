@@ -4,9 +4,12 @@ use axum::extract::{Path, State};
 use axum::Json;
 use chrono::Utc;
 use reqwest::StatusCode;
+use serde::Deserialize;
+use validator::Validate;
 
-use openadr::wire::program::{ProgramContent, ProgramId, QueryParams};
-use openadr::wire::Program;
+use openadr::wire::program::{ProgramContent, ProgramId};
+use openadr::wire::target::TargetLabel;
+use openadr::wire::{Pagination, Program};
 
 use crate::api::{AppResponse, ValidatedQuery};
 use crate::error::AppError;
@@ -15,11 +18,27 @@ use crate::state::AppState;
 
 pub async fn get_all(
     State(state): State<AppState>,
-    // TODO handle query params
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Program>> {
+    let programs = state
+        .programs
+        .read()
+        .await
+        .values()
+        .filter_map(|program| match query_params.matches(program) {
+            Ok(true) => Some(Ok(program.clone())),
+            Ok(false) => None,
+            Err(err) => Some(Err(err)),
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+
+    let pagination = query_params.pagination;
+
     Ok(Json(
-        state.programs.read().await.values().cloned().collect(),
+        programs
+            .get(pagination.skip as usize..(pagination.skip + pagination.limit) as usize)
+            .unwrap_or(&[])
+            .to_vec(),
     ))
 }
 
@@ -86,5 +105,36 @@ pub async fn delete(
     match state.programs.write().await.remove(&id) {
         None => Err(NotFound),
         Some(removed) => Ok(Json(removed)),
+    }
+}
+
+#[derive(Deserialize, Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryParams {
+    target_type: Option<TargetLabel>,
+    target_values: Option<Vec<String>>,
+    #[serde(flatten)]
+    #[validate(nested)]
+    pagination: Pagination,
+}
+
+impl QueryParams {
+    pub fn matches(&self, program: &Program) -> Result<bool, AppError> {
+        if let Some(target_type) = self.target_type.clone() {
+            return match target_type {
+                TargetLabel::ProgramName => Ok(self
+                    .target_values
+                    .clone()
+                    .ok_or(AppError::BadRequest(
+                        "If targetType is specified, targetValues must be specified as well",
+                    ))?
+                    .into_iter()
+                    .any(|name| name == program.content.program_name)),
+                _ => Err(AppError::NotImplemented(
+                    "Program can only be filtered by name",
+                )),
+            };
+        }
+        Ok(true)
     }
 }

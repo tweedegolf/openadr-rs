@@ -123,6 +123,7 @@ pub struct QueryParams {
     target_values: Option<Vec<String>>,
     client_name: Option<String>,
     #[serde(flatten)]
+    #[validate(nested)]
     pagination: Pagination,
 }
 
