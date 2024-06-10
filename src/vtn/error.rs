@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::QueryRejection;
 use openadr::wire::Problem;
-use tracing::trace;
+use tracing::{error, trace, warn};
 use uuid::Uuid;
 
 #[derive(thiserror::Error, Debug)]
@@ -20,6 +20,8 @@ pub enum AppError {
     BadRequest(&'static str),
     #[error("Not implemented {0}")]
     NotImplemented(&'static str),
+    #[error("Conflict: {0}")]
+    Conflict(String),
 }
 
 impl IntoResponse for AppError {
@@ -94,11 +96,21 @@ impl IntoResponse for AppError {
                 }
             }
             AppError::NotImplemented(err) => {
-                trace!("Error reference: {}, Not implemented: {}", reference, err);
+                error!("Error reference: {}, Not implemented: {}", reference, err);
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::NOT_IMPLEMENTED.to_string()),
                     status: StatusCode::NOT_IMPLEMENTED,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::Conflict(err) => {
+                warn!("Error reference: {}, Conflict: {}", reference, err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::CONFLICT.to_string()),
+                    status: StatusCode::CONFLICT,
                     detail: Some(err.to_string()),
                     instance: Some(reference.to_string()),
                 }

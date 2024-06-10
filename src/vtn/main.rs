@@ -4,6 +4,7 @@ use axum::routing::get;
 use axum::Router;
 use tokio::net::TcpListener;
 use tokio::signal;
+use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -48,6 +49,7 @@ async fn main() {
             "/events/:id",
             get(event::get).put(event::edit).delete(event::delete),
         )
+        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
     let addr = "0.0.0.0:3000";
