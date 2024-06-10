@@ -3,13 +3,13 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use std::fmt::{Display, Formatter};
 use uuid::Uuid;
-use validator::Validate;
 
 use crate::wire::interval::IntervalPeriod;
 use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
-use crate::wire::target::{TargetLabel, TargetMap};
+use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
 use crate::wire::Currency;
 use crate::Unit;
@@ -79,6 +79,12 @@ impl Event {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
 pub struct EventId(pub String);
 
+impl Display for EventId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Used as discriminator, e.g. notification.object
 #[derive(
     Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
@@ -112,26 +118,6 @@ impl EventPayloadDescriptor {
             currency: None,
         }
     }
-}
-
-#[derive(Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryParams {
-    #[serde(rename = "programID")]
-    program_id: Option<ProgramId>,
-    target_type: Option<TargetLabel>,
-    target_values: Option<Vec<String>>,
-    client_name: Option<String>,
-    #[serde(default)]
-    skip: u32,
-    // TODO how to interpret limit = 0 and what is the default?
-    #[validate(range(max = 50))]
-    #[serde(default = "get_50")]
-    limit: u32,
-}
-
-fn get_50() -> u32 {
-    50
 }
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set

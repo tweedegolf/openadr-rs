@@ -5,12 +5,12 @@ use axum::Json;
 use chrono::Utc;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use tracing::{debug, info, trace, warn};
+use tracing::{info, trace, warn};
 use validator::Validate;
 
 use openadr::wire::program::{ProgramContent, ProgramId};
-use openadr::wire::Program;
 use openadr::wire::target::TargetLabel;
+use openadr::wire::Program;
 
 use crate::api::{AppResponse, ValidatedQuery};
 use crate::error::AppError;
@@ -39,7 +39,6 @@ pub async fn get_all(
     Ok(Json(programs))
 }
 
-#[tracing::instrument(skip(state))]
 pub async fn get(State(state): State<AppState>, Path(id): Path<ProgramId>) -> AppResponse<Program> {
     Ok(Json(
         state
@@ -52,13 +51,6 @@ pub async fn get(State(state): State<AppState>, Path(id): Path<ProgramId>) -> Ap
     ))
 }
 
-// TODO
-//   '409':
-//   description: Conflict. Implementation dependent response if program with the same programName exists.
-//   content:
-//        application/json:
-//        schema:
-//        $ref: '#/components/schemas/problem'
 pub async fn add(
     State(state): State<AppState>,
     Json(new_program): Json<ProgramContent>,
@@ -125,10 +117,12 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<ProgramId>,
 ) -> AppResponse<Program> {
-    debug!(%id, "delete program");
     match state.programs.write().await.remove(&id) {
         None => Err(NotFound),
-        Some(removed) => Ok(Json(removed)),
+        Some(removed) => {
+            info!(%id, "deleted program");
+            Ok(Json(removed))
+        }
     }
 }
 

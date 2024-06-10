@@ -21,10 +21,3 @@ pub struct Point {
     #[serde(rename = "y")]
     pub y: f32,
 }
-
-impl Point {
-    /// A pair of floats typically used as a point on a 2 dimensional grid.
-    pub fn new(x: f32, y: f32) -> Point {
-        Point { x, y }
-    }
-}

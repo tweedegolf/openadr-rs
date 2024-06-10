@@ -3,8 +3,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use std::fmt::{Display, Formatter};
 use uuid::Uuid;
-use validator::Validate;
 
 use crate::wire::event::EventId;
 use crate::wire::interval::{Interval, IntervalPeriod};
@@ -76,6 +76,12 @@ impl Report {
 //         example: object-999
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, Hash, Eq)]
 pub struct ReportId(pub String);
+
+impl Display for ReportId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Used as discriminator, e.g. notification.object
 #[derive(
@@ -252,27 +258,6 @@ pub struct ReportValuesMap {
     /// A list of data points. Most often a singular value such as a price.
     // TODO: The type of Value is actually defined by value_type
     pub values: Vec<Value>,
-}
-
-#[derive(Serialize, Deserialize, Validate)]
-#[skip_serializing_none]
-#[serde(rename_all = "camelCase")]
-pub struct QueryParams {
-    #[serde(rename = "programID")]
-    program_id: Option<ProgramId>,
-    #[serde(rename = "eventID")]
-    event_id: Option<EventId>,
-    client_name: Option<String>,
-    #[serde(default)]
-    skip: u32,
-    // TODO how to interpret limit = 0 and what is the default?
-    #[validate(range(max = 50))]
-    #[serde(default = "get_50")]
-    limit: u32,
-}
-
-fn get_50() -> u32 {
-    50
 }
 
 #[cfg(test)]
