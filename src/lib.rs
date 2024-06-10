@@ -2,6 +2,11 @@ use serde::{Deserialize, Serialize};
 
 pub mod generated;
 pub mod wire;
+mod client;
+mod error;
+
+pub use client::Client;
+pub use error::*;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -97,28 +102,6 @@ pub enum Unit {
     /// An application specific privately defined unit.
     #[serde(untagged)]
     Private(String),
-}
-
-pub struct Client {
-    _client: reqwest::Client,
-    _base_url: reqwest::Url,
-}
-
-impl Client {
-    pub fn new(base_url: impl reqwest::IntoUrl) -> reqwest::Result<Client> {
-        let client = reqwest::Client::new();
-        Self::with_reqwest(base_url, client)
-    }
-
-    pub fn with_reqwest(
-        base_url: impl reqwest::IntoUrl,
-        client: reqwest::Client,
-    ) -> reqwest::Result<Client> {
-        Ok(Client {
-            _client: client,
-            _base_url: base_url.into_url()?,
-        })
-    }
 }
 
 #[cfg(test)]

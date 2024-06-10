@@ -21,7 +21,7 @@ pub struct ValueType(pub String);
 #[serde(untagged)]
 pub enum Value {
     Integer(i64),
-    Number(f32),
+    Number(f64),
     Boolean(bool),
     Point(Point),
     String(String),

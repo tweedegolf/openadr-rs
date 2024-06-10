@@ -36,6 +36,21 @@ pub enum TargetLabel {
     Private(String),
 }
 
+impl ToString for TargetLabel {
+    fn to_string(&self) -> String {
+        match self {
+            TargetLabel::PowerServiceLocation => String::from("POWER_SERVICE_LOCATION"),
+            TargetLabel::ServiceArea => String::from("SERVICE_AREA"),
+            TargetLabel::Group => String::from("GROUP"),
+            TargetLabel::ResourceName => String::from("RESOURCE_NAME"),
+            TargetLabel::VENName => String::from("VEN_NAME"),
+            TargetLabel::EventName => String::from("EVENT_NAME"),
+            TargetLabel::ProgramName => String::from("PROGRAM_NAME"),
+            TargetLabel::Private(s) => s.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

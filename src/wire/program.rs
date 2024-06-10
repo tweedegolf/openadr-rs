@@ -1,5 +1,7 @@
 //! Types used for the program/ endpoint
 
+use std::fmt::Display;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
@@ -22,16 +24,19 @@ pub struct Program {
     ///
     /// URL safe VTN assigned object ID.
     pub id: ProgramId,
+
     /// VTN provisioned on object creation.
     ///
     /// datetime in ISO 8601 format
     #[serde(with = "crate::wire::serde_rfc3339")]
     pub created_date_time: DateTime<Utc>,
+
     /// VTN provisioned on object modification.
     ///
     /// datetime in ISO 8601 format
     #[serde(with = "crate::wire::serde_rfc3339")]
     pub modification_date_time: DateTime<Utc>,
+
     #[serde(flatten)]
     pub content: ProgramContent,
 }
@@ -57,7 +62,7 @@ pub struct ProgramContent {
     // TODO: Maybe remove this? It is more part of the enum containing this
     pub object_type: Option<ProgramObjectType>,
     /// Short name to uniquely identify program.
-    pub program_name: ProgramName,
+    pub program_name: String,
     /// Long name of program for human readability.
     pub program_long_name: Option<String>,
     /// Short name of energy retailer providing the program.
@@ -99,13 +104,9 @@ pub struct ProgramContent {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
 pub struct ProgramId(pub String);
 
-// TODO: enforce length requirement
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ProgramName(String);
-
-impl ProgramName {
-    pub fn new(name: String) -> Self {
-        Self(name)
+impl Display for ProgramId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -185,7 +186,7 @@ mod tests {
             modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             content: ProgramContent {
                 object_type: Some(ProgramObjectType::Program),
-                program_name: ProgramName("ResTOU".into()),
+                program_name: "ResTOU".into(),
                 program_long_name: Some("Residential Time of Use-A".into()),
                 retailer_name: Some("ACME".into()),
                 retailer_long_name: Some("ACME Electric Inc.".into()),
@@ -217,7 +218,7 @@ mod tests {
             serde_json::from_str::<ProgramContent>(example).unwrap(),
             ProgramContent {
                 object_type: None,
-                program_name: ProgramName("test".to_string()),
+                program_name: "test".to_string(),
                 program_long_name: None,
                 retailer_name: None,
                 retailer_long_name: None,
