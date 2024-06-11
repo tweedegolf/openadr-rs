@@ -14,27 +14,60 @@ use crate::wire::{
 use crate::wire::{target::TargetLabel, Program};
 use crate::Result;
 
+/// Target for a query to the VTN
 #[derive(Copy, Clone, Debug)]
 pub enum Target<'a> {
+    /// Target by a specific program name
     Program(&'a str),
+
+    /// Target by a list of program names
     Programs(&'a [&'a str]),
+
+    /// Target by a specific event name
     Event(&'a str),
+
+    /// Target by a list of event names
     Events(&'a [&'a str]),
+
+    /// Target by a specific VEN name
     VEN(&'a str),
+
+    /// Target by a list of VEN names
     VENs(&'a [&'a str]),
+
+    /// Target by a specific group name
     Group(&'a str),
+
+    /// Target by a list of group names
     Groups(&'a [&'a str]),
+
+    /// Target by a specific resource name
     Resource(&'a str),
+
+    /// Target by a list of resource names
     Resources(&'a [&'a str]),
+
+    /// Target by a specific service area
     ServiceArea(&'a str),
+
+    /// Target by a list of service areas
     ServiceAreas(&'a [&'a str]),
+
+    /// Target by a specific power service location
     PowerServiceLocation(&'a str),
+
+    /// Target by a list of power service locations
     PowerServiceLocations(&'a [&'a str]),
+
+    /// Target using some other kind of privately defined target type, using a single target value
     Other(&'a str, &'a str),
+
+    /// Target using some other kind of privately defined target type, with a list of values
     Others(&'a str, &'a [&'a str]),
 }
 
 impl<'a> Target<'a> {
+    /// Get the target label for this specific target
     pub fn target_label(&self) -> TargetLabel {
         match self {
             Target::Program(_) | Target::Programs(_) => TargetLabel::ProgramName,
@@ -50,6 +83,7 @@ impl<'a> Target<'a> {
         }
     }
 
+    /// Get the list of target values for this specific target
     pub fn target_values(&self) -> &[&str] {
         match self {
             Target::Program(v) => std::slice::from_ref(v),
@@ -367,7 +401,7 @@ impl ProgramClient {
         Ok(EventClient::from_event(self.client.clone(), event))
     }
 
-    /// Create a new event object within the program.
+    /// Create a new event object within the program
     pub fn new_event(&self) -> EventContent {
         EventContent {
             object_type: Some(EventObjectType::Event),
