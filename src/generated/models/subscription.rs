@@ -48,6 +48,7 @@ pub struct Subscription {
 
 impl Subscription {
     /// An object created by a client to receive notification of operations on objects. Clients may subscribe to be notified when a type of object is created, updated, or deleted.
+    #[allow(dead_code)]
     pub fn new(
         client_name: String,
         program_id: String,

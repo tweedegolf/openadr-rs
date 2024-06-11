@@ -5,8 +5,9 @@ pub enum Error {
     Serde(serde_json::Error),
     UrlParseError(url::ParseError),
     Problem(crate::wire::Problem),
-    ProgramNotFound,
-    DuplicateProgram,
+    ObjectNotFound,
+    DuplicateObject,
+    InvalidParentObject,
 }
 
 impl From<reqwest::Error> for Error {
@@ -40,8 +41,9 @@ impl std::fmt::Display for Error {
             Error::Serde(err) => write!(f, "Serde error: {}", err),
             Error::UrlParseError(err) => write!(f, "URL parse error: {}", err),
             Error::Problem(err) => write!(f, "OpenADR Problem: {:?}", err),
-            Error::ProgramNotFound => write!(f, "Program not found"),
-            Error::DuplicateProgram => write!(f, "Found more than one program with the same name"),
+            Error::ObjectNotFound => write!(f, "Object not found"),
+            Error::DuplicateObject => write!(f, "Found more than one object matching the filter"),
+            Error::InvalidParentObject => write!(f, "Invalid parent object"),
         }
     }
 }

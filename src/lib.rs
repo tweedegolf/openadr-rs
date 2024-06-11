@@ -2,8 +2,8 @@
 
 mod client;
 mod error;
-pub mod generated;
+mod generated;
 pub mod wire;
 
-pub use client::Client;
+pub use client::*;
 pub use error::*;

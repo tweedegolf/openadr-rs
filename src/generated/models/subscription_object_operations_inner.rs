@@ -31,6 +31,7 @@ pub struct SubscriptionObjectOperationsInner {
 
 impl SubscriptionObjectOperationsInner {
     /// object type, operations, and callbackUrl.
+    #[allow(dead_code)]
     pub fn new(
         objects: Vec<ObjectTypes>,
         operations: Vec<Operations>,

@@ -49,6 +49,7 @@ pub struct Ven {
 
 impl Ven {
     /// Ven represents a client with the ven role.
+    #[allow(dead_code)]
     pub fn new(ven_name: String) -> Ven {
         Ven {
             id: None,

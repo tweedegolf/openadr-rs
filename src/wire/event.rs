@@ -56,6 +56,46 @@ pub struct EventContent {
     pub intervals: Vec<EventInterval>,
 }
 
+impl EventContent {
+    pub fn with_event_name(mut self, event_name: impl ToString) -> Self {
+        self.event_name = Some(event_name.to_string());
+        self
+    }
+
+    pub fn with_priority(mut self, priority: u32) -> Self {
+        self.priority = Some(priority);
+        self
+    }
+
+    pub fn with_targets(mut self, targets: TargetMap) -> Self {
+        self.targets = Some(targets);
+        self
+    }
+
+    pub fn with_report_descriptors(mut self, report_descriptors: Vec<ReportDescriptor>) -> Self {
+        self.report_descriptors = Some(report_descriptors);
+        self
+    }
+
+    pub fn with_payload_descriptors(
+        mut self,
+        payload_descriptors: Vec<EventPayloadDescriptor>,
+    ) -> Self {
+        self.payload_descriptors = Some(payload_descriptors);
+        self
+    }
+
+    pub fn with_interval_period(mut self, interval_period: IntervalPeriod) -> Self {
+        self.interval_period = Some(interval_period);
+        self
+    }
+
+    pub fn with_intervals(mut self, intervals: Vec<EventInterval>) -> Self {
+        self.intervals = intervals;
+        self
+    }
+}
+
 impl Event {
     pub fn new(content: EventContent) -> Self {
         Self {
@@ -81,6 +121,12 @@ pub struct EventId(pub String);
 impl Display for EventId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl EventId {
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 

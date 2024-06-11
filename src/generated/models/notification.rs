@@ -32,6 +32,7 @@ pub struct Notification {
 
 impl Notification {
     /// VTN generated object included in request to subscription callbackUrl.
+    #[allow(dead_code)]
     pub fn new(
         object_type: ObjectTypes,
         operation: Operation,

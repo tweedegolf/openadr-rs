@@ -47,6 +47,7 @@ pub struct Resource {
 
 impl Resource {
     /// A resource is an energy device or system subject to control by a VEN.
+    #[allow(dead_code)]
     pub fn new(resource_name: String) -> Resource {
         Resource {
             id: None,

@@ -34,7 +34,7 @@ pub struct Report {
 #[serde(rename_all = "camelCase")]
 pub struct ReportContent {
     /// Used as discriminator, e.g. notification.object
-    pub object_type: Option<ObjectType>,
+    pub object_type: Option<ReportObjectType>,
     // FIXME Must likely bei EITHER a programID OR an eventID
     /// ID attribute of the program object this report is associated with.
     #[serde(rename = "programID")]
@@ -53,6 +53,28 @@ pub struct ReportContent {
     pub payload_descriptors: Option<Vec<ReportPayloadDescriptor>>,
     /// A list of objects containing report data for a set of resources.
     pub resources: Vec<Resource>,
+}
+
+impl ReportContent {
+    pub fn with_client_name(mut self, client_name: &str) -> Self {
+        self.client_name = client_name.to_string();
+        self
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.report_name = Some(name.to_string());
+        self
+    }
+
+    pub fn with_payload_descriptors(mut self, descriptors: Vec<ReportPayloadDescriptor>) -> Self {
+        self.payload_descriptors = Some(descriptors);
+        self
+    }
+
+    pub fn with_resources(mut self, resources: Vec<Resource>) -> Self {
+        self.resources = resources;
+        self
+    }
 }
 
 impl Report {
@@ -77,6 +99,12 @@ impl Report {
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, Hash, Eq)]
 pub struct ReportId(pub String);
 
+impl ReportId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl Display for ReportId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -88,7 +116,7 @@ impl Display for ReportId {
     Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
 )]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ObjectType {
+pub enum ReportObjectType {
     #[default]
     Report,
 }
@@ -411,7 +439,7 @@ mod tests {
             created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             content: ReportContent {
-                object_type: Some(ObjectType::Report),
+                object_type: Some(ReportObjectType::Report),
                 program_id: ProgramId("object-999".into()),
                 event_id: EventId("object-999".into()),
                 client_name: "VEN-999".into(),

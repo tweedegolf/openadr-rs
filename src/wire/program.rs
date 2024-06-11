@@ -95,7 +95,7 @@ pub struct ProgramContent {
 impl ProgramContent {
     pub fn new(name: impl ToString) -> ProgramContent {
         ProgramContent {
-            object_type: Default::default(),
+            object_type: Some(ProgramObjectType::Program),
             program_name: name.to_string(),
             program_long_name: Default::default(),
             retailer_name: Default::default(),
@@ -128,6 +128,12 @@ pub struct ProgramId(pub String);
 impl Display for ProgramId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl ProgramId {
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
