@@ -2,6 +2,7 @@ mod event;
 mod program;
 mod report;
 mod target;
+mod timeline;
 
 use std::sync::Arc;
 
