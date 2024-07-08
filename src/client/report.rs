@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{wire::{report::ReportContent, Report}, Result};
+use crate::{
+    wire::{report::ReportContent, Report},
+    Result,
+};
 
 use super::ClientRef;
 

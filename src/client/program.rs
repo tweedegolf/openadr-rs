@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{wire::{event::EventObjectType, target::TargetLabel, Event, Program}, EventClient, EventContent, ProgramContent, ProgramId, Result, Target};
+use crate::{
+    wire::{event::EventObjectType, target::TargetLabel, Event, Program},
+    EventClient, EventContent, ProgramContent, ProgramId, Result, Target,
+};
 
 use super::ClientRef;
 
