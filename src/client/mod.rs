@@ -1,16 +1,16 @@
-mod target;
-mod program;
 mod event;
+mod program;
 mod report;
+mod target;
 
 use std::sync::Arc;
 
 use url::Url;
 
-pub use target::*;
-pub use program::*;
 pub use event::*;
+pub use program::*;
 pub use report::*;
+pub use target::*;
 
 pub use crate::wire::{
     event::EventContent,
