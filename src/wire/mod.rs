@@ -38,16 +38,15 @@ mod serde_rfc3339 {
     where
         D: Deserializer<'de>,
     {
-        Ok(String::deserialize(deserializer)
-            .and_then(|rfc_str| {
-                DateTime::parse_from_rfc3339(&rfc_str).map_err(|_| {
-                    serde::de::Error::invalid_value(
-                        Unexpected::Str(&rfc_str),
-                        &"Invalid RFC3339 string",
-                    )
-                })
-            })?
-            .into())
+        let rfc_str = <&str as Deserialize>::deserialize(deserializer)?;
+
+        match DateTime::parse_from_rfc3339(rfc_str) {
+            Ok(datetime) => Ok(datetime.into()),
+            Err(_) => Err(serde::de::Error::invalid_value(
+                Unexpected::Str(rfc_str),
+                &"Invalid RFC3339 string",
+            )),
+        }
     }
 }
 
