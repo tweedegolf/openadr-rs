@@ -736,7 +736,6 @@ dependencies = [
  "axum",
  "axum-extra",
  "chrono",
- "once_cell",
  "regex",
  "reqwest",
  "serde",
