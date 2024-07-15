@@ -1,5 +1,29 @@
-use crate::wire::event::EventValuesMap;
-use std::ops::Range;
+use crate::{
+    wire::{event::EventValuesMap, interval::IntervalPeriod},
+    EventContent,
+};
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
+struct Range<T> {
+    start: T,
+    end: Option<T>,
+}
+
+impl<T> Range<T> {
+    fn range(from: T, to: T) -> Self {
+        Self {
+            start: from,
+            end: Some(to),
+        }
+    }
+
+    fn range_from(from: T) -> Self {
+        Self {
+            start: from,
+            end: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ValuedInterval {
@@ -17,11 +41,42 @@ pub struct ValuedInterval {
 /// Intervals are sorted by their timestamp. The intervals will not overlap, but there may be gaps
 /// between intervals.
 #[allow(unused)]
+#[derive(Default)]
 pub struct Timeline {
     data: Vec<ValuedInterval>,
 }
 
 impl Timeline {
+    fn from_event_content(event: &EventContent) -> Self {
+        let mut this = Self::default();
+
+        let period = &event.interval_period;
+
+        for interval in &event.intervals {
+            match &interval.interval_period {
+                Some(IntervalPeriod {
+                    start,
+                    duration,
+                    randomize_start,
+                }) => {
+                    let range = match duration {
+                        Some(duration) => Range::range(*start, *start + duration),
+                        None => Range::range_from(*start),
+                    };
+
+                    this.insert(ValuedInterval {
+                        range,
+                        value: interval.payloads.clone(),
+                        randomize_start: todo!(),
+                    });
+                }
+                None => todo!(),
+            }
+        }
+
+        this
+    }
+
     #[allow(unused)]
     pub fn insert(&mut self, element: ValuedInterval) {
         let action = Action::insert(
