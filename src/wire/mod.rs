@@ -4,6 +4,8 @@
 //! Most types are originally generated from the OpenAPI specification of OpenADR
 //! and manually modified to be more idiomatic.
 
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 pub use event::Event;
@@ -49,10 +51,73 @@ mod serde_rfc3339 {
     }
 }
 
-// TODO: Replace with real ISO8601 type
-/// A ISO 8601 formatted duration
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Duration(String);
+/// An ISO 8601 formatted duration
+#[derive(Clone, Debug, PartialEq)]
+pub struct Duration(::iso8601_duration::Duration);
+
+impl<'de> Deserialize<'de> for Duration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        let duration = raw
+            .parse::<::iso8601_duration::Duration>()
+            .map_err(|_| "iso8601_duration::ParseDurationError")
+            .map_err(serde::de::Error::custom)?;
+
+        Ok(Self(duration))
+    }
+}
+
+impl Serialize for Duration {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl Duration {
+    pub const fn hour() -> Self {
+        Self(::iso8601_duration::Duration {
+            year: 0.0,
+            month: 0.0,
+            day: 0.0,
+            hour: 1.0,
+            minute: 0.0,
+            second: 0.0,
+        })
+    }
+}
+
+impl std::str::FromStr for Duration {
+    type Err = ::iso8601_duration::ParseDurationError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let duration = s.parse::<::iso8601_duration::Duration>()?;
+        Ok(Self(duration))
+    }
+}
+
+impl Display for Duration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ::iso8601_duration::Duration {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+        } = self.0;
+
+        f.write_fmt(format_args!(
+            "P{}Y{}M{}DT{}H{}M{}S",
+            year, month, day, hour, minute, second
+        ))
+    }
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -231,5 +296,33 @@ mod tests {
             serde_json::from_str::<Unit>(r#""something else""#).unwrap(),
             Unit::Private(String::from("something else"))
         );
+    }
+
+    impl quickcheck::Arbitrary for super::Duration {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            // the iso8601_duration library uses an f32 to store the values, which starts losing
+            // precision at 24-bit integers.
+            super::Duration(::iso8601_duration::Duration {
+                year: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,
+                month: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,
+                day: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,
+                hour: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,
+                minute: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,
+                second: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,
+            })
+        }
+    }
+
+    #[test]
+    fn duration_to_string_from_str_roundtrip() {
+        quickcheck::quickcheck(test as fn(_) -> bool);
+
+        fn test(input: super::Duration) -> bool {
+            let roundtrip = input.to_string().parse::<super::Duration>().unwrap();
+
+            assert_eq!(input.0, roundtrip.0);
+
+            input.0 == roundtrip.0
+        }
     }
 }
