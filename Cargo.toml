@@ -26,6 +26,10 @@ regex = "1.10.4"
 chrono = "0.4.38"
 url = "2.5.0"
 tower-http = { version = "0.5.2" , features = ["trace"]}
+iso8601-duration = "0.2.0"
+
+[dev-dependencies]
+quickcheck = "1.0.3"
 
 [lib]
 name = "openadr"

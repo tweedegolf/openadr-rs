@@ -449,15 +449,15 @@ mod tests {
                     resource_name: ResourceName::Private("RESOURCE-999".into()),
                     interval_period: Some(IntervalPeriod {
                         start: "2023-06-15T09:30:00Z".parse().unwrap(),
-                        duration: Some(Duration("PT1H".into())),
-                        randomize_start: Some(Duration("PT1H".into())),
+                        duration: Some(Duration::hour()),
+                        randomize_start: Some(Duration::hour()),
                     }),
                     intervals: vec![Interval {
                         id: 0,
                         interval_period: Some(IntervalPeriod {
                             start: "2023-06-15T09:30:00Z".parse().unwrap(),
-                            duration: Some(Duration("PT1H".into())),
-                            randomize_start: Some(Duration("PT1H".into())),
+                            duration: Some(Duration::hour()),
+                            randomize_start: Some(Duration::hour()),
                         }),
                         payloads: vec![ValuesMap {
                             value_type: ValueType("PRICE".into()),
