@@ -3,27 +3,7 @@ use crate::{
     EventContent,
 };
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
-struct Range<T> {
-    start: T,
-    end: Option<T>,
-}
-
-impl<T> Range<T> {
-    fn range(from: T, to: T) -> Self {
-        Self {
-            start: from,
-            end: Some(to),
-        }
-    }
-
-    fn range_from(from: T) -> Self {
-        Self {
-            start: from,
-            end: None,
-        }
-    }
-}
+use std::ops::Range;
 
 #[derive(Debug, Clone)]
 pub struct ValuedInterval {
@@ -60,8 +40,8 @@ impl Timeline {
                     randomize_start,
                 }) => {
                     let range = match duration {
-                        Some(duration) => Range::range(*start, *start + duration),
-                        None => Range::range_from(*start),
+                        Some(duration) => *start..*start + duration,
+                        None => *start..chrono::DateTime::MAX_UTC,
                     };
 
                     this.insert(ValuedInterval {
