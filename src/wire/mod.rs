@@ -80,16 +80,38 @@ impl Serialize for Duration {
 }
 
 impl Duration {
-    pub const fn hour() -> Self {
-        Self(::iso8601_duration::Duration {
-            year: 0.0,
-            month: 0.0,
-            day: 0.0,
-            hour: 1.0,
-            minute: 0.0,
-            second: 0.0,
-        })
+    /// because iso8601 durations can include months and years, they don't independently have a
+    /// fixed duration. Their real duration (in real units like seconds) can only be determined
+    /// when a starting time is given.
+    ///
+    /// NOTE: does not consider leap seconds!
+    pub fn to_chrono_at_datetime<Tz: chrono::TimeZone>(
+        &self,
+        at: chrono::DateTime<Tz>,
+    ) -> chrono::Duration {
+        self.0.to_chrono_at_datetime(at)
     }
+
+    /// One (1) hour
+    pub const PT1H: Self = Self(::iso8601_duration::Duration {
+        year: 0.0,
+        month: 0.0,
+        day: 0.0,
+        hour: 1.0,
+        minute: 0.0,
+        second: 0.0,
+    });
+
+    /// Indicates that an event's intervals continue indefinitely into the future until the event is
+    /// deleted or modified. This effectively represents an infinite duration.
+    pub const P999Y: Self = Self(::iso8601_duration::Duration {
+        year: 9999.0,
+        month: 0.0,
+        day: 0.0,
+        hour: 0.0,
+        minute: 0.0,
+        second: 0.0,
+    });
 }
 
 impl std::str::FromStr for Duration {

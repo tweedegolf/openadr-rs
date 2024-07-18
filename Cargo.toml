@@ -26,7 +26,7 @@ regex = "1.10.4"
 chrono = "0.4.38"
 url = "2.5.0"
 tower-http = { version = "0.5.2" , features = ["trace"]}
-iso8601-duration = "0.2.0"
+iso8601-duration = { version = "0.2.0", features = ["chrono"] }
 
 [dev-dependencies]
 quickcheck = "1.0.3"
