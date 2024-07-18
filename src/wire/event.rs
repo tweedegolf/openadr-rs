@@ -350,15 +350,15 @@ mod tests {
                 payload_descriptors: None,
                 interval_period: Some(IntervalPeriod {
                     start: "2023-06-15T09:30:00Z".parse().unwrap(),
-                    duration: Some(Duration::hour()),
-                    randomize_start: Some(Duration::hour()),
+                    duration: Some(Duration::PT1H),
+                    randomize_start: Some(Duration::PT1H),
                 }),
                 intervals: vec![EventInterval {
                     id: 0,
                     interval_period: Some(IntervalPeriod {
                         start: "2023-06-15T09:30:00Z".parse().unwrap(),
-                        duration: Some(Duration::hour()),
-                        randomize_start: Some(Duration::hour()),
+                        duration: Some(Duration::PT1H),
+                        randomize_start: Some(Duration::PT1H),
                     }),
                     payloads: vec![EventValuesMap {
                         value_type: EventType::Price,
