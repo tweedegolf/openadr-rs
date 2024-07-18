@@ -11,7 +11,7 @@ pub struct ValuedInterval {
     /// Relative priority of event. A lower number is a higher priority.
     pub priority: Option<u32>,
     /// Indicates a randomization time that may be applied to start.
-    pub randomize_start: Option<std::time::Duration>,
+    pub randomize_start: Option<chrono::Duration>,
     /// The actual values that are active during this interval
     pub value_map: Vec<EventValuesMap>,
 }
@@ -33,24 +33,31 @@ impl Timeline {
         let period = &event.interval_period;
 
         for interval in &event.intervals {
-            match &interval.interval_period {
+            // use the even't interval period when the interval doesn't specify one
+            match interval.interval_period.as_ref().or(period.as_ref()) {
                 Some(IntervalPeriod {
                     start,
                     duration,
                     randomize_start,
                 }) => {
                     let range = match duration {
-                        Some(duration) => *start..*start + duration,
-                        None => *start..chrono::DateTime::MAX_UTC,
+                        Some(duration) => *start..*start + duration.0.to_chrono_at_datetime(*start),
+                        None => *start..chrono::DateTime::<chrono::Utc>::MAX_UTC,
                     };
 
                     this.insert(ValuedInterval {
                         range,
-                        value: interval.payloads.clone(),
-                        randomize_start: todo!(),
+                        priority: event.priority,
+                        value_map: interval.payloads.clone(),
+                        // NOTE: this will silently fail when randomize_start includes years/months
+                        randomize_start: randomize_start
+                            .as_ref()
+                            .map(|d| d.0.to_chrono_at_datetime(*start)),
                     });
                 }
-                None => todo!(),
+                None => {
+                    panic!("event without an interval")
+                }
             }
         }
 
