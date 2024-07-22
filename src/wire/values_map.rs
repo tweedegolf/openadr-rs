@@ -17,7 +17,7 @@ pub struct ValuesMap {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ValueType(pub String);
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Value {
     Integer(i64),
@@ -26,6 +26,22 @@ pub enum Value {
     Point(Point),
     String(String),
 }
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Integer(s), Self::Integer(o)) => s == o,
+            (Self::Boolean(s), Self::Boolean(o)) => s == o,
+            (Self::Point(s), Self::Point(o)) => s == o,
+            (Self::String(s), Self::String(o)) => s == o,
+            (Self::Number(s), Self::Number(o)) if s.is_nan() && o.is_nan() => true,
+            (Self::Number(s), Self::Number(o)) => s == o,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Value {}
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Point {
