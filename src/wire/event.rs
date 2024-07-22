@@ -43,7 +43,7 @@ pub struct EventContent {
     /// User defined string for use in debugging or User Interface.
     pub event_name: Option<String>,
     /// Relative priority of event. A lower number is a higher priority.
-    pub priority: Option<u32>,
+    pub priority: Priority,
     /// A list of valuesMap objects.
     pub targets: Option<TargetMap>,
     /// A list of reportDescriptor objects. Used to request reports from VEN.
@@ -62,9 +62,8 @@ impl EventContent {
         self
     }
 
-    pub fn with_priority(mut self, priority: u32) -> Self {
-        self.priority = Some(priority);
-        self
+    pub fn with_priority(self, priority: Priority) -> Self {
+        Self { priority, ..self }
     }
 
     pub fn with_targets(mut self, targets: TargetMap) -> Self {
@@ -138,6 +137,45 @@ impl EventId {
 pub enum EventObjectType {
     #[default]
     Event,
+}
+
+/// Relative priority of an event
+///
+/// 0 indicates the highest priority.
+///
+/// SPEC ASSUMPTION: [`Self::UNSPECIFIED`] has lower priority then any other value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Priority(Option<u32>);
+
+impl Priority {
+    pub const UNSPECIFIED: Self = Self(None);
+
+    pub const MAX: Self = Self(Some(0));
+    pub const MIN: Self = Self::UNSPECIFIED;
+
+    pub const fn new(val: u32) -> Self {
+        Self(Some(val))
+    }
+}
+
+impl PartialOrd for Priority {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Priority {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+
+        match (self.0, other.0) {
+            (None, None) => Ordering::Equal,
+            (None, Some(_)) => Ordering::Less,
+            (Some(_), None) => Ordering::Greater,
+            (Some(s), Some(o)) => s.cmp(&o).reverse(),
+        }
+    }
 }
 
 /// Contextual information used to interpret event valuesMap values. E.g. a PRICE payload simply
@@ -288,7 +326,7 @@ mod tests {
                 object_type: None,
                 program_id: ProgramId("foo".into()),
                 event_name: None,
-                priority: None,
+                priority: Priority::MIN,
                 targets: None,
                 report_descriptors: None,
                 payload_descriptors: None,
@@ -344,7 +382,7 @@ mod tests {
                 object_type: Some(EventObjectType::Event),
                 program_id: ProgramId("object-999".into()),
                 event_name: Some("price event 11-18-2022".into()),
-                priority: Some(0),
+                priority: Priority::MAX,
                 targets: Default::default(),
                 report_descriptors: None,
                 payload_descriptors: None,

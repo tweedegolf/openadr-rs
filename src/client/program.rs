@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
-    wire::{event::EventObjectType, target::TargetLabel, Event, Program},
+    wire::{
+        event::{EventObjectType, Priority},
+        target::TargetLabel,
+        Event, Program,
+    },
     EventClient, EventContent, ProgramContent, ProgramId, Result, Target,
 };
 
@@ -81,7 +85,7 @@ impl ProgramClient {
             object_type: Some(EventObjectType::Event),
             program_id: self.id().clone(),
             event_name: None,
-            priority: None,
+            priority: Priority::UNSPECIFIED,
             targets: None,
             report_descriptors: None,
             payload_descriptors: None,
