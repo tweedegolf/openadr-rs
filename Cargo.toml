@@ -27,6 +27,7 @@ chrono = "0.4.38"
 url = "2.5.0"
 tower-http = { version = "0.5.2" , features = ["trace"]}
 iso8601-duration = { version = "0.2.0", features = ["chrono"] }
+rangemap = "1.5.1"
 
 [dev-dependencies]
 quickcheck = "1.0.3"

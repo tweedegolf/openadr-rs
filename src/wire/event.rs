@@ -57,6 +57,25 @@ pub struct EventContent {
 }
 
 impl EventContent {
+    pub fn new(program_id: ProgramId, intervals: Vec<EventInterval>) -> Self {
+        assert!(
+            intervals.len() >= 1,
+            "EventContent::new called with no intervals!"
+        );
+
+        Self {
+            object_type: None,
+            program_id,
+            event_name: None,
+            priority: Priority::UNSPECIFIED,
+            targets: None,
+            report_descriptors: None,
+            payload_descriptors: None,
+            interval_period: None,
+            intervals,
+        }
+    }
+
     pub fn with_event_name(mut self, event_name: impl ToString) -> Self {
         self.event_name = Some(event_name.to_string());
         self
