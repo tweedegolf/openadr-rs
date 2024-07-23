@@ -59,8 +59,8 @@ pub struct EventContent {
 impl EventContent {
     pub fn new(program_id: ProgramId, intervals: Vec<EventInterval>) -> Self {
         assert!(
-            intervals.len() >= 1,
-            "EventContent::new called with no intervals!"
+            !intervals.is_empty(),
+            "`EventContent::new` called with no intervals!"
         );
 
         Self {
