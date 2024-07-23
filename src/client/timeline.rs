@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+use std::{collections::HashSet, ops::Range};
+
 use chrono::{DateTime, Utc};
 use tracing::warn;
 
@@ -11,13 +13,15 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Interval {
+struct InternalInterval {
+    /// Id so that split itervals with a randomized start don't start randomly twice
+    id: u32,
     /// Relative priority of event
-    pub priority: Priority,
+    priority: Priority,
     /// Indicates a randomization time that may be applied to start.
-    pub randomize_start: Option<chrono::Duration>,
+    randomize_start: Option<chrono::Duration>,
     /// The actual values that are active during this interval
-    pub value_map: Vec<EventValuesMap>,
+    value_map: Vec<EventValuesMap>,
 }
 
 /// A sequence of ordered, non-overlapping intervals and associated values.
@@ -27,7 +31,7 @@ pub struct Interval {
 #[allow(unused)]
 #[derive(Default)]
 pub struct Timeline {
-    data: rangemap::RangeMap<chrono::DateTime<chrono::Utc>, Interval>,
+    data: rangemap::RangeMap<chrono::DateTime<chrono::Utc>, InternalInterval>,
 }
 
 impl Timeline {
@@ -36,7 +40,7 @@ impl Timeline {
 
         events.sort_by_key(|e| e.priority);
 
-        for event in events {
+        for (id, event) in events.iter().enumerate() {
             // SPEC ASSUMPTION: At least one of the following `interval_period`s must be given on the program,
             // on the event, or on the interval
             let default_period = event
@@ -63,7 +67,8 @@ impl Timeline {
                     None => *start..DateTime::<Utc>::MAX_UTC,
                 };
 
-                let interval = Interval {
+                let interval = InternalInterval {
+                    id: id as u32,
                     randomize_start: randomize_start
                         .as_ref()
                         .map(|d| d.to_chrono_at_datetime(*start)),
@@ -82,6 +87,45 @@ impl Timeline {
         }
 
         Ok(data)
+    }
+
+    pub fn iter(&self) -> Iter<'_> {
+        Iter {
+            iter: self.data.iter(),
+            seen: HashSet::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Interval<'a> {
+    /// Indicates a randomization time that may be applied to start.
+    pub randomize_start: Option<chrono::Duration>,
+    /// The actual values that are active during this interval
+    pub value_map: &'a [EventValuesMap],
+}
+
+pub struct Iter<'a> {
+    iter: rangemap::map::Iter<'a, DateTime<Utc>, InternalInterval>,
+    seen: HashSet<u32>,
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = (&'a Range<DateTime<Utc>>, Interval<'a>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (range, internal) = self.iter.next()?;
+
+        let interval = Interval {
+            // only the first occurence of an id should randomize its start
+            randomize_start: match self.seen.insert(internal.id) {
+                true => internal.randomize_start,
+                false => None,
+            },
+            value_map: &internal.value_map,
+        };
+
+        Some((range, interval))
     }
 }
 
@@ -125,16 +169,18 @@ mod test {
     }
 
     fn interval_with_value(
+        id: u32,
         range: Range<u32>,
         value: i64,
         priority: Priority,
-    ) -> (Range<DateTime<Utc>>, super::Interval) {
+    ) -> (Range<DateTime<Utc>>, super::InternalInterval) {
         let start = DateTime::UNIX_EPOCH + Duration::hours(range.start.into());
         let end = DateTime::UNIX_EPOCH + Duration::hours(range.end.into());
 
         (
             start..end,
-            super::Interval {
+            super::InternalInterval {
+                id,
                 randomize_start: None,
                 value_map: vec![EventValuesMap {
                     value_type: crate::wire::event::EventType::Price,
@@ -160,8 +206,8 @@ mod test {
         assert_eq!(
             tl1.data.into_iter().collect::<Vec<_>>(),
             vec![
-                interval_with_value(0..5, 42, Priority::UNSPECIFIED),
-                interval_with_value(5..15, 43, Priority::UNSPECIFIED),
+                interval_with_value(0, 0..5, 42, Priority::UNSPECIFIED),
+                interval_with_value(1, 5..15, 43, Priority::UNSPECIFIED),
             ]
         );
 
@@ -170,8 +216,8 @@ mod test {
         assert_eq!(
             tl2.data.into_iter().collect::<Vec<_>>(),
             vec![
-                interval_with_value(0..10, 42, Priority::UNSPECIFIED),
-                interval_with_value(10..15, 43, Priority::UNSPECIFIED),
+                interval_with_value(1, 0..10, 42, Priority::UNSPECIFIED),
+                interval_with_value(0, 10..15, 43, Priority::UNSPECIFIED),
             ]
         );
     }
@@ -185,8 +231,8 @@ mod test {
         assert_eq!(
             tl.data.into_iter().collect::<Vec<_>>(),
             vec![
-                interval_with_value(0..10, 42, Priority::new(1)),
-                interval_with_value(10..15, 43, Priority::new(2)),
+                interval_with_value(1, 0..10, 42, Priority::new(1)),
+                interval_with_value(0, 10..15, 43, Priority::new(2)),
             ],
             "a lower priority event MUST NOT overwrite a higher priority one",
         );
@@ -195,8 +241,8 @@ mod test {
         assert_eq!(
             tl.data.into_iter().collect::<Vec<_>>(),
             vec![
-                interval_with_value(0..10, 42, Priority::new(1)),
-                interval_with_value(10..15, 43, Priority::new(2)),
+                interval_with_value(1, 0..10, 42, Priority::new(1)),
+                interval_with_value(0, 10..15, 43, Priority::new(2)),
             ],
             "a lower priority event MUST NOT overwrite a higher priority one",
         );
@@ -211,8 +257,8 @@ mod test {
         assert_eq!(
             tl.data.into_iter().collect::<Vec<_>>(),
             vec![
-                interval_with_value(0..5, 42, Priority::new(2)),
-                interval_with_value(5..15, 43, Priority::new(1)),
+                interval_with_value(0, 0..5, 42, Priority::new(2)),
+                interval_with_value(1, 5..15, 43, Priority::new(1)),
             ],
             "a higher priority event MUST overwrite a lower priority one",
         );
@@ -221,10 +267,66 @@ mod test {
         assert_eq!(
             tl.data.into_iter().collect::<Vec<_>>(),
             vec![
-                interval_with_value(0..5, 42, Priority::new(2)),
-                interval_with_value(5..15, 43, Priority::new(1)),
+                interval_with_value(0, 0..5, 42, Priority::new(2)),
+                interval_with_value(1, 5..15, 43, Priority::new(1)),
             ],
             "a higher priority event MUST overwrite a lower priority one",
+        );
+    }
+
+    #[test]
+    fn randomize_start_not_duplicated() {
+        let event1 = test_event_content(5..10, 42).with_priority(Priority::MAX);
+
+        let event2 = {
+            let range = 0..15;
+            let value = 43;
+            EventContent::new(
+                test_program_id(),
+                vec![EventInterval {
+                    id: range.start as _,
+                    interval_period: Some(IntervalPeriod {
+                        start: DateTime::UNIX_EPOCH + Duration::hours(range.start.into()),
+                        duration: Some(crate::wire::Duration::hours(
+                            (range.end - range.start) as _,
+                        )),
+                        randomize_start: Some(crate::wire::Duration::hours(5.0)),
+                    }),
+                    payloads: vec![EventValuesMap {
+                        value_type: crate::wire::event::EventType::Price,
+                        values: vec![Value::Integer(value)],
+                    }],
+                }],
+            )
+        };
+
+        let tl = Timeline::new(&ProgramContent::new("p"), vec![&event1, &event2]).unwrap();
+        assert_eq!(
+            tl.iter().map(|(_, i)| i).collect::<Vec<_>>(),
+            vec![
+                Interval {
+                    randomize_start: Some(Duration::hours(5)),
+                    value_map: &[EventValuesMap {
+                        value_type: crate::wire::event::EventType::Price,
+                        values: vec![Value::Integer(43)],
+                    }],
+                },
+                Interval {
+                    randomize_start: None,
+                    value_map: &[EventValuesMap {
+                        value_type: crate::wire::event::EventType::Price,
+                        values: vec![Value::Integer(42)],
+                    }],
+                },
+                Interval {
+                    randomize_start: None,
+                    value_map: &[EventValuesMap {
+                        value_type: crate::wire::event::EventType::Price,
+                        values: vec![Value::Integer(43)],
+                    }],
+                },
+            ],
+            "when an event is split, only the first interval should retain `randomize_start`",
         );
     }
 }
