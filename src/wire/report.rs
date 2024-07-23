@@ -29,8 +29,8 @@ pub struct Report {
     pub content: ReportContent,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportContent {
     /// Used as discriminator, e.g. notification.object
@@ -150,8 +150,8 @@ impl Resource {
 /// An object that may be used to request a report from a VEN. See OpenADR REST User Guide for
 /// detailed description of how configure a report request.
 // TODO: replace "-1 means" with proper enum
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportDescriptor {
     /// Enumerated or private string signifying the nature of values.
@@ -220,8 +220,8 @@ fn pos_one() -> i32 {
 /// Contextual information used to interpret report payload values. E.g. a USAGE payload simply
 /// contains a usage value, an associated descriptor provides necessary context such as units and
 /// data quality.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
@@ -255,8 +255,8 @@ pub struct Confidence(u8);
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportInterval {
     /// A client generated number assigned an interval object. Not a sequence number.

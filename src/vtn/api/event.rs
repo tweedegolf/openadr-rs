@@ -15,66 +15,29 @@ use openadr::wire::target::TargetLabel;
 use openadr::wire::Event;
 
 use crate::api::{AppResponse, ValidatedQuery};
+use crate::data_source::{Crud, EventPostgresSource};
 use crate::error::AppError;
-use crate::error::AppError::{NotFound, NotImplemented};
+use crate::error::AppError::NotFound;
 use crate::state::AppState;
 
 pub async fn get_all(
-    State(state): State<AppState>,
+    events: EventPostgresSource,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Event>> {
     trace!(?query_params);
 
-    let events = state
-        .events
-        .read()
-        .await
-        .values()
-        .filter_map(|event| match query_params.matches(event) {
-            Ok(true) => Some(Ok(event.clone())),
-            Ok(false) => None,
-            Err(err) => Some(Err(err)),
-        })
-        .skip(query_params.skip as usize)
-        .take(query_params.limit as usize)
-        .collect::<Result<Vec<_>, AppError>>()?;
-
-    Ok(Json(events))
+    Ok(Json(events.retrieve_all(&query_params).await?))
 }
 
-pub async fn get(State(state): State<AppState>, Path(id): Path<EventId>) -> AppResponse<Event> {
-    Ok(Json(
-        state.events.read().await.get(&id).ok_or(NotFound)?.clone(),
-    ))
+pub async fn get(events: EventPostgresSource, Path(id): Path<EventId>) -> AppResponse<Event> {
+    Ok(Json(events.retrieve(&id).await?))
 }
 
 pub async fn add(
-    State(state): State<AppState>,
+    events: EventPostgresSource,
     Json(new_event): Json<EventContent>,
 ) -> Result<(StatusCode, Json<Event>), AppError> {
-    let mut map = state.events.write().await;
-
-    if let Some(new_event_name) = &new_event.event_name {
-        if let Some((name, id)) = map
-            .iter()
-            .filter_map(|(_, p)| {
-                p.content
-                    .event_name
-                    .clone()
-                    .map(|name| (name, p.id.clone()))
-            })
-            .find(|(name, _)| name == new_event_name)
-        {
-            warn!(id=%id, event_name=%name, "Conflicting event_name");
-            return Err(AppError::Conflict(format!(
-                "Event with id {} has the same name",
-                id
-            )));
-        }
-    }
-
-    let event = Event::new(new_event);
-    map.insert(event.id.clone(), event.clone());
+    let event = events.create(&new_event).await?;
 
     info!(%event.id,
         event_name=?event.content.event_name,
@@ -134,31 +97,17 @@ pub async fn delete(State(state): State<AppState>, Path(id): Path<EventId>) -> A
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
     #[serde(rename = "programID")]
-    program_id: Option<ProgramId>,
-    target_type: Option<TargetLabel>,
-    target_values: Option<Vec<String>>,
+    pub program_id: Option<ProgramId>,
+    pub target_type: Option<TargetLabel>,
+    pub target_values: Option<Vec<String>>,
     #[serde(default)]
-    skip: u32,
+    pub skip: i64,
     // TODO how to interpret limit = 0 and what is the default?
     #[validate(range(max = 50))]
     #[serde(default = "get_50")]
-    limit: u32,
+    pub limit: i64,
 }
 
-fn get_50() -> u32 {
+fn get_50() -> i64 {
     50
-}
-
-impl QueryParams {
-    pub fn matches(&self, event: &Event) -> Result<bool, AppError> {
-        if let Some(program_id) = &self.program_id {
-            Ok(&event.content.program_id == program_id)
-        } else if self.target_type.is_some() || self.target_values.is_some() {
-            Err(NotImplemented(
-                "Filtering by target_type and target_values is not supported",
-            ))
-        } else {
-            Ok(true)
-        }
-    }
 }

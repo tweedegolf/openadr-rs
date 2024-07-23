@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::routing::get;
 use axum::Router;
+use sqlx::PgPool;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tower_http::trace::TraceLayer;
@@ -17,6 +18,7 @@ use api::report;
 use crate::state::AppState;
 
 mod api;
+mod data_source;
 mod error;
 mod state;
 
@@ -31,6 +33,9 @@ async fn main() {
         programs: Arc::new(Default::default()),
         reports: Arc::new(Default::default()),
         events: Arc::new(Default::default()),
+        pool: PgPool::connect("postgres://openadr@localhost/openadr")
+            .await
+            .unwrap(), // FIXME make this configurable
     };
 
     let app = Router::new()
