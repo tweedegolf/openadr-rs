@@ -33,8 +33,8 @@ pub async fn get(events: EventPostgresSource, Path(id): Path<EventId>) -> AppRes
         events
             .retrieve(&id)
             .await
-            .inspect(|_| trace!(%id, "successfully got event"))
-            .inspect_err(|err| debug!(%id, ?err, "failed to get event"))?,
+            .inspect(|_| trace!(event.id=%id, "successfully got event"))
+            .inspect_err(|err| debug!(event.id=%id, ?err, "failed to get event"))?,
     ))
 }
 
@@ -61,9 +61,9 @@ pub async fn edit(
         events
             .update(&id, &content)
             .await
-            .inspect(|_| info!(%id, event_name=?content.event_name, "event updated"))
+            .inspect(|_| info!(event.id=%id, event_name=?content.event_name, "event updated"))
             .inspect_err(
-                |err| debug!(%id, event_name=?content.event_name, ?err, "event update failed"),
+                |err| debug!(event.id=%id, event_name=?content.event_name, ?err, "event update failed"),
             )?,
     ))
 }
@@ -74,7 +74,7 @@ pub async fn delete(events: EventPostgresSource, Path(id): Path<EventId>) -> App
             .delete(&id)
             .await
             .inspect(|event| info!(%event.id, event_name=event.content.event_name, "deleted event"))
-            .inspect_err(|err| debug!(%id, ?err, "failed to delete event"))?,
+            .inspect_err(|err| debug!(event.id=%id, ?err, "failed to delete event"))?,
     ))
 }
 
@@ -86,9 +86,10 @@ pub struct QueryParams {
     pub target_type: Option<TargetLabel>,
     pub target_values: Option<Vec<String>>,
     #[serde(default)]
+    #[validate(range(min = 0))]
     pub skip: i64,
     // TODO how to interpret limit = 0 and what is the default?
-    #[validate(range(max = 50))]
+    #[validate(range(min = 1, max = 50))]
     #[serde(default = "get_50")]
     pub limit: i64,
 }
