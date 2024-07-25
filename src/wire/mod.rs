@@ -51,6 +51,25 @@ mod serde_rfc3339 {
     }
 }
 
+pub fn string_within_range_inclusive<'de, const MIN: usize, const MAX: usize, D>(
+    deserializer: D,
+) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let borrowed_str = <&str as Deserialize>::deserialize(deserializer)?;
+    let len = borrowed_str.len();
+
+    if (MIN..=MAX).contains(&len) {
+        Ok(borrowed_str.to_string())
+    } else {
+        Err(serde::de::Error::invalid_value(
+            Unexpected::Str(borrowed_str),
+            &IdentifierError::InvalidLength(len).to_string().as_str(),
+        ))
+    }
+}
+
 /// A string that matches `/^[a-zA-Z0-9_-]*$/` with length in 1..=128
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 pub struct Identifier(#[serde(deserialize_with = "identifier")] String);
@@ -427,6 +446,33 @@ mod tests {
         );
 
         assert!(serde_json::from_str::<Identifier>("\"\"")
+            .unwrap_err()
+            .to_string()
+            .contains("string length 0 outside of allowed range 1..=128"));
+    }
+
+    #[test]
+    fn deserialize_string_within_range_inclusive() {
+        use serde::Deserialize;
+
+        #[derive(Debug, Deserialize, PartialEq, Eq)]
+        struct Test(
+            #[serde(deserialize_with = "super::string_within_range_inclusive::<1, 128, _>")] String,
+        );
+
+        let long = "x".repeat(128);
+        assert_eq!(
+            serde_json::from_str::<Test>(&format!("\"{long}\"")).unwrap(),
+            Test(long)
+        );
+
+        let too_long = "x".repeat(129);
+        assert!(serde_json::from_str::<Test>(&format!("\"{too_long}\""))
+            .unwrap_err()
+            .to_string()
+            .contains("string length 129 outside of allowed range 1..=128"));
+
+        assert!(serde_json::from_str::<Test>("\"\"")
             .unwrap_err()
             .to_string()
             .contains("string length 0 outside of allowed range 1..=128"));

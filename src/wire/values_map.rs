@@ -13,9 +13,11 @@ pub struct ValuesMap {
     pub values: Vec<Value>,
 }
 
-// TODO: Add validation len in 1..=128
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ValueType(pub String);
+pub struct ValueType(
+    #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
+    pub  String,
+);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
