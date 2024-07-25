@@ -34,6 +34,7 @@ pub struct Subscription {
     pub object_type: Option<ObjectType>,
     /// User generated identifier, may be VEN identifier provisioned during program enrollment.
     #[serde(rename = "clientName")]
+    #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
     pub client_name: String,
     /// URL safe VTN assigned object ID.
     #[serde(rename = "programID")]
