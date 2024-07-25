@@ -1,9 +1,10 @@
 //! Types used for the `event/` endpoint
 
+use std::fmt::{Display, Formatter};
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 use crate::wire::interval::IntervalPeriod;
@@ -30,13 +31,14 @@ pub struct Event {
     pub content: EventContent,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventContent {
     /// Used as discriminator, e.g. notification.object
     // TODO: remove this?
-    pub object_type: Option<EventObjectType>,
+    #[serde(default)]
+    pub object_type: EventObjectType,
     /// URL safe VTN assigned object ID.
     #[serde(rename = "programID")]
     pub program_id: ProgramId,
@@ -53,6 +55,7 @@ pub struct EventContent {
     /// Defines default start and durations of intervals.
     pub interval_period: Option<IntervalPeriod>,
     /// A list of interval objects.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub intervals: Vec<EventInterval>,
 }
 
@@ -117,6 +120,12 @@ impl Event {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
 pub struct EventId(pub String);
 
+impl From<String> for EventId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 impl Display for EventId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -144,9 +153,22 @@ pub enum EventObjectType {
 /// 0 indicates the highest priority.
 ///
 /// SPEC ASSUMPTION: [`Self::UNSPECIFIED`] has lower priority then any other value.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// TODO nice JSON serialization
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(transparent)]
 pub struct Priority(Option<u32>);
+
+impl From<Option<i64>> for Priority {
+    fn from(value: Option<i64>) -> Self {
+        Self(value.and_then(|i| i.unsigned_abs().try_into().ok()))
+    }
+}
+
+impl From<Priority> for Option<i64> {
+    fn from(value: Priority) -> Self {
+        value.0.map(|u| u.into())
+    }
+}
 
 impl Priority {
     pub const UNSPECIFIED: Self = Self(None);
@@ -181,8 +203,8 @@ impl Ord for Priority {
 /// Contextual information used to interpret event valuesMap values. E.g. a PRICE payload simply
 /// contains a price value, an associated descriptor provides necessary context such as units and
 /// currency.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
@@ -212,8 +234,8 @@ pub enum Currency {
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventInterval {
     /// A client generated number assigned an interval object. Not a sequence number.
@@ -323,7 +345,7 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<EventContent>(example).unwrap(),
             EventContent {
-                object_type: None,
+                object_type: Default::default(),
                 program_id: ProgramId("foo".into()),
                 event_name: None,
                 priority: Priority::MIN,
@@ -379,7 +401,7 @@ mod tests {
             created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             content: EventContent {
-                object_type: Some(EventObjectType::Event),
+                object_type: EventObjectType::Event,
                 program_id: ProgramId("object-999".into()),
                 event_name: Some("price event 11-18-2022".into()),
                 priority: Priority::MAX,

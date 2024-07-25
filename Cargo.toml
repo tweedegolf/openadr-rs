@@ -2,7 +2,7 @@
 name = "openadr-rs"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.70" # MSRV
+rust-version = "1.76" # MSRV
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/tweedegolf/openadr-rs"
 homepage = "https://github.com/tweedegolf/openadr-rs"
@@ -20,13 +20,14 @@ axum-extra = { version = "0.9.3", features = ["query"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 thiserror = "1.0.61"
-validator = {version =  "0.18.1", features = ["derive"] }
+validator = { version = "0.18.1", features = ["derive"] }
 uuid = { version = "1.8.0", features = ["v4"] }
 regex = "1.10.4"
 chrono = "0.4.38"
 url = "2.5.0"
-tower-http = { version = "0.5.2" , features = ["trace"]}
+tower-http = { version = "0.5.2", features = ["trace"] }
 iso8601-duration = { version = "0.2.0", features = ["chrono"] }
+sqlx = { version = "0.8.0", features = ["postgres", "runtime-tokio", "chrono"] }
 
 [dev-dependencies]
 quickcheck = "1.0.3"
@@ -41,3 +42,6 @@ path = "src/vtn/main.rs"
 [[bin]]
 name = "openadr"
 path = "src/cli/main.rs"
+
+[features]
+live-db-test = []

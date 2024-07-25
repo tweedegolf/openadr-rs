@@ -1,11 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    wire::{
-        event::{EventObjectType, Priority},
-        target::TargetLabel,
-        Event, Program,
-    },
+    wire::{event::Priority, target::TargetLabel, Event, Program},
     EventClient, EventContent, ProgramContent, ProgramId, Result, Target,
 };
 
@@ -82,7 +78,7 @@ impl ProgramClient {
     /// Create a new event object within the program
     pub fn new_event(&self) -> EventContent {
         EventContent {
-            object_type: Some(EventObjectType::Event),
+            object_type: Default::default(),
             program_id: self.id().clone(),
             event_name: None,
             priority: Priority::UNSPECIFIED,

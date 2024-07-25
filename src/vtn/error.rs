@@ -2,9 +2,13 @@ use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::QueryRejection;
-use openadr::wire::Problem;
 use tracing::{error, trace, warn};
 use uuid::Uuid;
+
+use openadr::wire::Problem;
+
+use crate::data_source;
+use crate::data_source::Error;
 
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
@@ -22,6 +26,32 @@ pub enum AppError {
     NotImplemented(&'static str),
     #[error("Conflict: {0}")]
     Conflict(String),
+    #[error("Database error: {0}")]
+    Sql(sqlx::Error),
+    #[error("Json (de)serialization error : {0}")]
+    SerdeJson(#[from] serde_json::Error),
+}
+
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
+        match err {
+            sqlx::Error::RowNotFound => Self::NotFound,
+            sqlx::Error::Database(err) if err.is_unique_violation() => {
+                trace!(?err);
+                Self::Conflict("Conflict".to_string())
+            }
+            _ => Self::Sql(err),
+        }
+    }
+}
+
+impl From<data_source::Error> for AppError {
+    fn from(err: data_source::Error) -> Self {
+        match err {
+            Error::Sqlx(e) => e.into(),
+            Error::Json(e) => e.into(),
+        }
+    }
 }
 
 impl IntoResponse for AppError {
@@ -111,6 +141,26 @@ impl IntoResponse for AppError {
                     r#type: Default::default(),
                     title: Some(StatusCode::CONFLICT.to_string()),
                     status: StatusCode::CONFLICT,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::Sql(err) => {
+                error!("Error reference: {}, SQL error: {}", reference, err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::SerdeJson(err) => {
+                trace!("Error reference: {}, serde json error: {}", reference, err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::BAD_REQUEST.to_string()),
+                    status: StatusCode::BAD_REQUEST,
                     detail: Some(err.to_string()),
                     instance: Some(reference.to_string()),
                 }

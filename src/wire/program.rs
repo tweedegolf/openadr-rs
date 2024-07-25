@@ -1,10 +1,9 @@
 //! Types used for the `program/` endpoint
 
-use std::fmt::Display;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use std::fmt::Display;
 use uuid::Uuid;
 
 use crate::wire::event::EventPayloadDescriptor;
@@ -51,8 +50,8 @@ impl Program {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgramContent {
     /// Used as discriminator, e.g. notification.object
@@ -122,8 +121,14 @@ impl ProgramContent {
 //         maxLength: 128
 //         description: URL safe VTN assigned object ID.
 //         example: object-999
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq, sqlx::Type)]
 pub struct ProgramId(pub String);
+
+impl From<String> for ProgramId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
 
 impl Display for ProgramId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
