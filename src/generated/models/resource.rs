@@ -33,6 +33,7 @@ pub struct Resource {
     pub object_type: Option<ObjectType>,
     /// User generated identifier, resource may be configured with identifier out-of-band.
     #[serde(rename = "resourceName")]
+    #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
     pub resource_name: String,
     /// URL safe VTN assigned object ID.
     #[serde(rename = "venID", skip_serializing_if = "Option::is_none")]

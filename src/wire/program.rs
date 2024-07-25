@@ -63,6 +63,7 @@ pub struct ProgramContent {
     // TODO: Maybe remove this? It is more part of the enum containing this
     pub object_type: Option<ProgramObjectType>,
     /// Short name to uniquely identify program.
+    #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
     pub program_name: String,
     /// Long name of program for human readability.
     pub program_long_name: Option<String>,

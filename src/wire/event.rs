@@ -280,7 +280,10 @@ pub enum EventType {
     #[serde(rename = "CTA2045_SET_OVERRIDE_STATUS")]
     CTA2045SetOverrideStatus,
     #[serde(untagged)]
-    Private(String),
+    Private(
+        #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
+        String,
+    ),
 }
 
 #[cfg(test)]
@@ -308,6 +311,9 @@ mod tests {
             serde_json::from_str::<EventType>(r#""something else""#).unwrap(),
             EventType::Private(String::from("something else"))
         );
+
+        assert!(serde_json::from_str::<EventType>(r#""""#).is_err());
+        assert!(serde_json::from_str::<EventType>(&format!("\"{}\"", "x".repeat(129))).is_err());
     }
 
     #[test]
