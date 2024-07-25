@@ -68,7 +68,9 @@ jobs:
             shared-key: "${{matrix.rust}}-${{matrix.target}}"
 
       - name: Setup Postgres DB
-        run: docker compose up db -d
+        run: |
+          docker compose up db -d && \
+          cargo sqlx migrate run
 
       - name: cargo build
         run: cargo build ${{ matrix.features }}
