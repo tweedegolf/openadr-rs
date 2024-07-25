@@ -42,3 +42,6 @@ path = "src/vtn/main.rs"
 [[bin]]
 name = "openadr"
 path = "src/cli/main.rs"
+
+[features]
+live-db-test = []

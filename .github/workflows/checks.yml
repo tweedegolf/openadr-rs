@@ -77,7 +77,7 @@ jobs:
         run: cargo build ${{ matrix.features }}
 
       - name: cargo test
-        run: cargo llvm-cov --target ${{matrix.target}} ${{ matrix.features }} --lcov --output-path lcov.info
+        run: cargo llvm-cov --target ${{matrix.target}} ${{ matrix.features }} --lcov --output-path lcov.info --features live-db-test
         env:
           RUST_BACKTRACE: 1
 

@@ -204,6 +204,7 @@ impl Crud for EventPostgresSource {
 }
 
 #[cfg(test)]
+#[cfg(feature = "live-db-test")]
 mod tests {
     use sqlx::PgPool;
 
