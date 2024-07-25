@@ -37,8 +37,6 @@ jobs:
             target: "aarch64-unknown-linux-gnu"
             os: ubuntu-latest
             features: "--all-features"
-    env:
-      SQLX_OFFLINE: true
     steps:
       - name: Checkout sources
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -69,6 +67,9 @@ jobs:
         with:
             shared-key: "${{matrix.rust}}-${{matrix.target}}"
 
+      - name: Setup Postgres DB
+        run: docker compose up db -d
+
       - name: cargo build
         run: cargo build ${{ matrix.features }}
 
@@ -76,6 +77,9 @@ jobs:
         run: cargo llvm-cov --target ${{matrix.target}} ${{ matrix.features }} --lcov --output-path lcov.info
         env:
           RUST_BACKTRACE: 1
+
+      - name: Bring Postgres DB down
+        run: docker compose down
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@e28ff129e5465c2c0dcc6f003fc735cb6ae0c673 # v4.5.0
