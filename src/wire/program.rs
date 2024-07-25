@@ -13,6 +13,8 @@ use crate::wire::report::ReportPayloadDescriptor;
 use crate::wire::target::TargetMap;
 use crate::wire::Duration;
 
+use super::Identifier;
+
 pub type Programs = Vec<Program>;
 
 /// Provides program specific metadata from VTN to VEN.
@@ -43,7 +45,7 @@ pub struct Program {
 impl Program {
     pub fn new(content: ProgramContent) -> Self {
         Self {
-            id: ProgramId(format!("program-{}", Uuid::new_v4())),
+            id: ProgramId(format!("program-{}", Uuid::new_v4()).parse().unwrap()),
             created_date_time: Utc::now(),
             modification_date_time: Utc::now(),
             content,
@@ -114,16 +116,9 @@ impl ProgramContent {
     }
 }
 
-// TODO enforce constraints:
-//     objectID:
-//         type: string
-//         pattern: /^[a-zA-Z0-9_-]*$/
-//         minLength: 1
-//         maxLength: 128
-//         description: URL safe VTN assigned object ID.
-//         example: object-999
+// example: object-999
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
-pub struct ProgramId(pub String);
+pub struct ProgramId(pub(crate) Identifier);
 
 impl Display for ProgramId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -133,7 +128,7 @@ impl Display for ProgramId {
 
 impl ProgramId {
     pub fn as_str(&self) -> &str {
-        &self.0
+        self.0.as_str()
     }
 }
 
@@ -197,7 +192,7 @@ mod tests {
         let parsed = serde_json::from_str::<Programs>(example).unwrap();
 
         let expected = vec![Program {
-            id: ProgramId("object-999".into()),
+            id: ProgramId("object-999".parse().unwrap()),
             created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             content: ProgramContent {
