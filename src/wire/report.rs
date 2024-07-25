@@ -11,7 +11,7 @@ use crate::wire::interval::{Interval, IntervalPeriod};
 use crate::wire::program::ProgramId;
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::Unit;
+use crate::wire::{Identifier, Unit};
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -80,7 +80,11 @@ impl ReportContent {
 impl Report {
     pub fn new(content: ReportContent) -> Self {
         Self {
-            id: ReportId(format!("report-{}", Uuid::new_v4())),
+            id: ReportId(
+                format!("report-{}", Uuid::new_v4())
+                    .parse::<Identifier>()
+                    .unwrap(),
+            ),
             created_date_time: Utc::now(),
             modification_date_time: Utc::now(),
             content,
@@ -88,20 +92,13 @@ impl Report {
     }
 }
 
-// TODO enforce constraints:
-//     objectID:
-//         type: string
-//         pattern: /^[a-zA-Z0-9_-]*$/
-//         minLength: 1
-//         maxLength: 128
-//         description: URL safe VTN assigned object ID.
-//         example: object-999
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, Hash, Eq)]
-pub struct ReportId(pub String);
+/// URL safe VTN assigned object ID
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
+pub struct ReportId(pub(crate) Identifier);
 
 impl ReportId {
     pub fn as_str(&self) -> &str {
-        &self.0
+        self.0.as_str()
     }
 }
 
@@ -360,8 +357,8 @@ mod tests {
         let example = r#"{"programID":"p1","eventID":"e1","clientName":"c","resources":[]}"#;
         let expected = ReportContent {
             object_type: None,
-            program_id: ProgramId("p1".into()),
-            event_id: EventId("e1".into()),
+            program_id: ProgramId("p1".parse().unwrap()),
+            event_id: EventId("e1".parse().unwrap()),
             client_name: "c".to_string(),
             report_name: None,
             payload_descriptors: None,
@@ -435,13 +432,13 @@ mod tests {
           }]"#;
 
         let expected = Report {
-            id: ReportId("object-999".into()),
+            id: ReportId("object-999".parse().unwrap()),
             created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             content: ReportContent {
                 object_type: Some(ReportObjectType::Report),
-                program_id: ProgramId("object-999".into()),
-                event_id: EventId("object-999".into()),
+                program_id: ProgramId("object-999".parse().unwrap()),
+                event_id: EventId("object-999".parse().unwrap()),
                 client_name: "VEN-999".into(),
                 report_name: Some("Battery_usage_04112023".into()),
                 payload_descriptors: None,

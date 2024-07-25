@@ -6,7 +6,8 @@
 
 use std::fmt::Display;
 
-use serde::{Deserialize, Serialize};
+use serde::de::Unexpected;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub use event::Event;
 pub use problem::Problem;
@@ -22,9 +23,9 @@ pub mod target;
 pub mod values_map;
 
 mod serde_rfc3339 {
+    use super::*;
+
     use chrono::{DateTime, TimeZone, Utc};
-    use serde::de::Unexpected;
-    use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S, Tz>(time: &DateTime<Tz>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -47,6 +48,59 @@ mod serde_rfc3339 {
                 &"Invalid RFC3339 string",
             )),
         }
+    }
+}
+
+/// A string that matches `/^[a-zA-Z0-9_-]*$/` with length in 1..=128
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
+pub struct Identifier(#[serde(deserialize_with = "identifier")] String);
+
+impl<'de> Deserialize<'de> for Identifier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let borrowed_str = <&str as Deserialize>::deserialize(deserializer)?;
+
+        borrowed_str.parse::<Identifier>().map_err(|e| {
+            serde::de::Error::invalid_value(Unexpected::Str(borrowed_str), &e.to_string().as_str())
+        })
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum IdentifierError {
+    #[error("string length {0} outside of allowed range 1..=128")]
+    InvalidLength(usize),
+    #[error("identifier contains characters besides [a-zA-Z0-9_-]")]
+    InvalidCharacter,
+}
+
+impl std::str::FromStr for Identifier {
+    type Err = IdentifierError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let is_valid_character = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'-';
+
+        if !(1..=128).contains(&s.len()) {
+            Err(IdentifierError::InvalidLength(s.len()))
+        } else if !s.bytes().all(is_valid_character) {
+            Err(IdentifierError::InvalidCharacter)
+        } else {
+            Ok(Identifier(s.to_string()))
+        }
+    }
+}
+
+impl Identifier {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -238,7 +292,7 @@ pub enum Unit {
 
 #[cfg(test)]
 mod tests {
-    use crate::wire::{Attribute, DataQuality, OperatingState, Unit};
+    use crate::wire::{Attribute, DataQuality, Identifier, OperatingState, Unit};
 
     #[test]
     fn test_operating_state_serialization() {
@@ -345,5 +399,36 @@ mod tests {
 
             input.0 == roundtrip.0
         }
+    }
+
+    #[test]
+    fn deserialize_identifier() {
+        assert_eq!(
+            serde_json::from_str::<Identifier>(r#""example-999""#).unwrap(),
+            Identifier("example-999".to_string())
+        );
+        assert!(serde_json::from_str::<Identifier>(r#""þingvellir-999""#)
+            .unwrap_err()
+            .to_string()
+            .contains("identifier contains characters besides"));
+
+        let long = "x".repeat(128);
+        assert_eq!(
+            serde_json::from_str::<Identifier>(&format!("\"{long}\"")).unwrap(),
+            Identifier(long)
+        );
+
+        let too_long = "x".repeat(129);
+        assert!(
+            serde_json::from_str::<Identifier>(&format!("\"{too_long}\""))
+                .unwrap_err()
+                .to_string()
+                .contains("string length 129 outside of allowed range 1..=128")
+        );
+
+        assert!(serde_json::from_str::<Identifier>("\"\"")
+            .unwrap_err()
+            .to_string()
+            .contains("string length 0 outside of allowed range 1..=128"));
     }
 }

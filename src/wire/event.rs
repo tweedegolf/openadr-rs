@@ -11,7 +11,7 @@ use crate::wire::program::ProgramId;
 use crate::wire::report::ReportDescriptor;
 use crate::wire::target::TargetMap;
 use crate::wire::values_map::Value;
-use crate::wire::Unit;
+use crate::wire::{Identifier, Unit};
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -98,7 +98,7 @@ impl EventContent {
 impl Event {
     pub fn new(content: EventContent) -> Self {
         Self {
-            id: EventId(format!("event-{}", Uuid::new_v4())),
+            id: EventId(format!("event-{}", Uuid::new_v4()).parse().unwrap()),
             created_date_time: Utc::now(),
             modification_date_time: Utc::now(),
             content,
@@ -106,16 +106,9 @@ impl Event {
     }
 }
 
-// TODO enforce constraints:
-//     objectID:
-//         type: string
-//         pattern: /^[a-zA-Z0-9_-]*$/
-//         minLength: 1
-//         maxLength: 128
-//         description: URL safe VTN assigned object ID.
-//         example: object-999
+/// URL safe VTN assigned object ID
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
-pub struct EventId(pub String);
+pub struct EventId(pub(crate) Identifier);
 
 impl Display for EventId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -125,7 +118,7 @@ impl Display for EventId {
 
 impl EventId {
     pub fn as_str(&self) -> &str {
-        &self.0
+        self.0.as_str()
     }
 }
 
@@ -324,7 +317,7 @@ mod tests {
             serde_json::from_str::<EventContent>(example).unwrap(),
             EventContent {
                 object_type: None,
-                program_id: ProgramId("foo".into()),
+                program_id: ProgramId("foo".parse().unwrap()),
                 event_name: None,
                 priority: Priority::MIN,
                 targets: None,
@@ -375,12 +368,12 @@ mod tests {
                                   }]"#;
 
         let expected = Event {
-            id: EventId("object-999-foo".into()),
+            id: EventId("object-999-foo".parse().unwrap()),
             created_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             modification_date_time: "2023-06-15T09:30:00Z".parse().unwrap(),
             content: EventContent {
                 object_type: Some(EventObjectType::Event),
-                program_id: ProgramId("object-999".into()),
+                program_id: ProgramId("object-999".parse().unwrap()),
                 event_name: Some("price event 11-18-2022".into()),
                 priority: Priority::MAX,
                 targets: Default::default(),
