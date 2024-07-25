@@ -37,6 +37,8 @@ jobs:
             target: "aarch64-unknown-linux-gnu"
             os: ubuntu-latest
             features: "--all-features"
+    env:
+      SQLX_OFFLINE: true
     steps:
       - name: Checkout sources
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -85,6 +87,8 @@ jobs:
   unused:
     name: Check unused dependencies
     runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: true
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
@@ -138,6 +142,8 @@ jobs:
             use_zig: true
             zig_args: "-target x86_64-linux-musl"
     runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: true
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:

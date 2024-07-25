@@ -4,9 +4,9 @@ use axum::http::request::Parts;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
-use openadr::{EventContent, ProgramId};
 use openadr::wire::event::{EventId, Priority};
 use openadr::wire::Event;
+use openadr::{EventContent, ProgramId};
 
 use crate::api::event::QueryParams;
 use crate::data_source::{Crud, Error};
@@ -207,14 +207,14 @@ impl Crud for EventPostgresSource {
 mod tests {
     use sqlx::PgPool;
 
-    use openadr::{EventContent, ProgramId};
+    use crate::error::AppError;
+    use chrono::{DateTime, Duration, Utc};
     use openadr::wire::event::{EventId, EventInterval, EventType, EventValuesMap};
-    use openadr::wire::Event;
     use openadr::wire::interval::IntervalPeriod;
     use openadr::wire::target::{TargetEntry, TargetLabel, TargetMap};
     use openadr::wire::values_map::Value;
-    use crate::error::AppError;
-    use chrono::{Duration, Utc, DateTime};
+    use openadr::wire::Event;
+    use openadr::{EventContent, ProgramId};
 
     use crate::api::event::QueryParams;
     use crate::data_source::{Crud, EventPostgresSource};
@@ -501,7 +501,10 @@ mod tests {
         #[sqlx::test(fixtures("events"))]
         async fn get_existing(db: PgPool) {
             let repo: EventPostgresSource = db.into();
-            let event = repo.retrieve(&EventId("event-1".to_string())).await.unwrap();
+            let event = repo
+                .retrieve(&EventId("event-1".to_string()))
+                .await
+                .unwrap();
             assert_eq!(event, event_1());
         }
 
@@ -509,7 +512,10 @@ mod tests {
         async fn get_not_existing(db: PgPool) {
             let repo: EventPostgresSource = db.into();
             let event = repo.retrieve(&EventId("not-existent".to_string())).await;
-            assert!(matches!(event.map_err(|err|err.into()), Err(AppError::NotFound)));
+            assert!(matches!(
+                event.map_err(|err| err.into()),
+                Err(AppError::NotFound)
+            ));
         }
     }
 
@@ -531,7 +537,10 @@ mod tests {
         async fn add_existing_conflict_name(db: PgPool) {
             let repo: EventPostgresSource = db.into();
             let event = repo.create(&event_1().content).await;
-            assert!(matches!(event.map_err(|err|err.into()), Err(AppError::Conflict(_))));
+            assert!(matches!(
+                event.map_err(|err| err.into()),
+                Err(AppError::Conflict(_))
+            ));
         }
     }
 
@@ -541,9 +550,17 @@ mod tests {
         #[sqlx::test(fixtures("events"))]
         async fn updates_modify_time(db: PgPool) {
             let repo: EventPostgresSource = db.into();
-            let event = repo.update(&EventId("event-1".to_string()), &event_1().content).await.unwrap();
+            let event = repo
+                .update(&EventId("event-1".to_string()), &event_1().content)
+                .await
+                .unwrap();
             assert_eq!(event.content, event_1().content);
-            assert_eq!(event.created_date_time, "2024-07-25 08:31:10.776000 +00:00".parse::<DateTime<Utc>>().unwrap());
+            assert_eq!(
+                event.created_date_time,
+                "2024-07-25 08:31:10.776000 +00:00"
+                    .parse::<DateTime<Utc>>()
+                    .unwrap()
+            );
             assert!(event.modification_date_time < Utc::now() + Duration::hours(1));
             assert!(event.modification_date_time > Utc::now() - Duration::hours(1));
         }
@@ -553,17 +570,28 @@ mod tests {
             let repo: EventPostgresSource = db.into();
             let mut updated = event_2().content;
             updated.event_name = Some("updated-name".to_string());
-            let event = repo.update(&EventId("event-1".to_string()), &updated).await.unwrap();
+            let event = repo
+                .update(&EventId("event-1".to_string()), &updated)
+                .await
+                .unwrap();
             assert_eq!(event.content, updated);
-            let event = repo.retrieve(&EventId("event-1".to_string())).await.unwrap();
+            let event = repo
+                .retrieve(&EventId("event-1".to_string()))
+                .await
+                .unwrap();
             assert_eq!(event.content, updated);
         }
 
         #[sqlx::test(fixtures("events"))]
         async fn update_name_conflict(db: PgPool) {
             let repo: EventPostgresSource = db.into();
-            let event = repo.update(&EventId("event-1".to_string()), &event_2().content).await;
-            assert!(matches!(event.map_err(|err|err.into()), Err(AppError::Conflict(_))));
+            let event = repo
+                .update(&EventId("event-1".to_string()), &event_2().content)
+                .await;
+            assert!(matches!(
+                event.map_err(|err| err.into()),
+                Err(AppError::Conflict(_))
+            ));
         }
     }
 
@@ -577,18 +605,26 @@ mod tests {
             assert_eq!(event, event_1());
 
             let event = repo.retrieve(&EventId("event-1".to_string())).await;
-            assert!(matches!(event.map_err(|err|err.into()), Err(AppError::NotFound)));
+            assert!(matches!(
+                event.map_err(|err| err.into()),
+                Err(AppError::NotFound)
+            ));
 
-            let event = repo.retrieve(&EventId("event-2".to_string())).await.unwrap();
+            let event = repo
+                .retrieve(&EventId("event-2".to_string()))
+                .await
+                .unwrap();
             assert_eq!(event, event_2());
         }
-
 
         #[sqlx::test(fixtures("events"))]
         async fn delete_not_existing(db: PgPool) {
             let repo: EventPostgresSource = db.into();
             let event = repo.delete(&EventId("not-existent".to_string())).await;
-            assert!(matches!(event.map_err(|err|err.into()), Err(AppError::NotFound)));
+            assert!(matches!(
+                event.map_err(|err| err.into()),
+                Err(AppError::NotFound)
+            ));
         }
     }
 }
