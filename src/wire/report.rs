@@ -35,7 +35,7 @@ pub struct Report {
 pub struct ReportContent {
     /// Used as discriminator, e.g. notification.object
     pub object_type: Option<ReportObjectType>,
-    // FIXME Must likely bei EITHER a programID OR an eventID
+    // FIXME Must likely be EITHER a programID OR an eventID
     /// ID attribute of the program object this report is associated with.
     #[serde(rename = "programID")]
     pub program_id: ProgramId,
@@ -43,7 +43,7 @@ pub struct ReportContent {
     #[serde(rename = "eventID")]
     pub event_id: EventId,
     /// User generated identifier; may be VEN ID provisioned during program enrollment.
-    // TODO: handle length validation 1..=128
+    #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
     pub client_name: String,
     /// User defined string for use in debugging or User Interface.
     pub report_name: Option<String>,
@@ -124,7 +124,6 @@ pub enum ReportObjectType {
 pub struct Resource {
     /// User generated identifier. A value of AGGREGATED_REPORT indicates an aggregation of more
     /// that one resource's data
-    // TODO: handle special name and length validation
     pub resource_name: ResourceName,
     /// Defines default start and durations of intervals.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -318,6 +317,9 @@ mod tests {
             serde_json::from_str::<ReportType>(r#""something else""#).unwrap(),
             ReportType::Private(String::from("something else"))
         );
+
+        assert!(serde_json::from_str::<ReportType>(r#""""#).is_err());
+        assert!(serde_json::from_str::<ReportType>(&format!("\"{}\"", "x".repeat(129))).is_err());
     }
 
     #[test]
@@ -389,6 +391,9 @@ mod tests {
             serde_json::from_str::<ResourceName>(r#""something else""#).unwrap(),
             ResourceName::Private(String::from("something else"))
         );
+
+        assert!(serde_json::from_str::<ResourceName>(r#""""#).is_err());
+        assert!(serde_json::from_str::<ResourceName>(&format!("\"{}\"", "x".repeat(129))).is_err());
     }
 
     #[test]
@@ -500,7 +505,10 @@ pub enum ReportType {
     ExportReservationCapacity,
     ExportReservationFee,
     #[serde(untagged)]
-    Private(String),
+    Private(
+        #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
+        String,
+    ),
 }
 
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
@@ -529,5 +537,8 @@ impl ReadingType {
 pub enum ResourceName {
     AggregatedReport,
     #[serde(untagged)]
-    Private(String),
+    Private(
+        #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
+        String,
+    ),
 }

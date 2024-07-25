@@ -35,6 +35,7 @@ pub struct Ven {
     pub object_type: Option<ObjectType>,
     /// User generated identifier, may be VEN identifier provisioned during program enrollment.
     #[serde(rename = "venName")]
+    #[serde(deserialize_with = "crate::wire::string_within_range_inclusive::<1, 128, _>")]
     pub ven_name: String,
     /// A list of valuesMap objects describing attributes.
     #[serde(rename = "attributes", skip_serializing_if = "Option::is_none")]
