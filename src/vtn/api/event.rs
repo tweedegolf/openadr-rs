@@ -1,11 +1,8 @@
-use std::collections::hash_map::Entry;
-
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::Json;
-use chrono::Utc;
 use serde::Deserialize;
-use tracing::{info, trace, warn};
+use tracing::{debug, info, trace};
 use validator::Validate;
 
 use openadr::wire::event::EventContent;
@@ -17,20 +14,28 @@ use openadr::wire::Event;
 use crate::api::{AppResponse, ValidatedQuery};
 use crate::data_source::{Crud, EventPostgresSource};
 use crate::error::AppError;
-use crate::error::AppError::NotFound;
-use crate::state::AppState;
 
 pub async fn get_all(
     events: EventPostgresSource,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Event>> {
-    trace!(?query_params);
-
-    Ok(Json(events.retrieve_all(&query_params).await?))
+    Ok(Json(
+        events
+            .retrieve_all(&query_params)
+            .await
+            .inspect(|_| trace!(?query_params, "successfully got all events"))
+            .inspect_err(|err| debug!(?query_params, ?err, "failed to get events"))?,
+    ))
 }
 
 pub async fn get(events: EventPostgresSource, Path(id): Path<EventId>) -> AppResponse<Event> {
-    Ok(Json(events.retrieve(&id).await?))
+    Ok(Json(
+        events
+            .retrieve(&id)
+            .await
+            .inspect(|_| trace!(%id, "successfully got event"))
+            .inspect_err(|err| debug!(%id, ?err, "failed to get event"))?,
+    ))
 }
 
 pub async fn add(
@@ -48,49 +53,29 @@ pub async fn add(
 }
 
 pub async fn edit(
-    State(state): State<AppState>,
+    events: EventPostgresSource,
     Path(id): Path<EventId>,
     Json(content): Json<EventContent>,
 ) -> AppResponse<Event> {
-    let mut map = state.events.write().await;
-
-    if let Some((_, conflict)) = map.iter().find(|(inner_id, p)| {
-        id != **inner_id
-            && content.event_name.is_some()
-            && p.content.event_name == content.event_name
-    }) {
-        warn!(updated=%id, conflicting=%conflict.id, event_name=?content.event_name, "Conflicting event_name");
-        return Err(AppError::Conflict(format!(
-            "Event with id {} has the same name",
-            conflict.id
-        )));
-    }
-
-    match map.entry(id) {
-        Entry::Occupied(mut entry) => {
-            let e = entry.get_mut();
-            e.content = content;
-            e.modification_date_time = Utc::now();
-
-            info!(%e.id,
-                event_name=?e.content.event_name,
-                "event created"
-            );
-
-            Ok(Json(e.clone()))
-        }
-        Entry::Vacant(_) => Err(NotFound),
-    }
+    Ok(Json(
+        events
+            .update(&id, &content)
+            .await
+            .inspect(|_| info!(%id, event_name=?content.event_name, "event updated"))
+            .inspect_err(
+                |err| debug!(%id, event_name=?content.event_name, ?err, "event update failed"),
+            )?,
+    ))
 }
 
-pub async fn delete(State(state): State<AppState>, Path(id): Path<EventId>) -> AppResponse<Event> {
-    match state.events.write().await.remove(&id) {
-        None => Err(NotFound),
-        Some(removed) => {
-            info!(%id, "deleted event");
-            Ok(Json(removed))
-        }
-    }
+pub async fn delete(events: EventPostgresSource, Path(id): Path<EventId>) -> AppResponse<Event> {
+    Ok(Json(
+        events
+            .delete(&id)
+            .await
+            .inspect(|event| info!(%event.id, event_name=event.content.event_name, "deleted event"))
+            .inspect_err(|err| debug!(%id, ?err, "failed to delete event"))?,
+    ))
 }
 
 #[derive(Deserialize, Validate, Debug)]

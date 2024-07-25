@@ -32,7 +32,6 @@ async fn main() {
     let state = AppState {
         programs: Arc::new(Default::default()),
         reports: Arc::new(Default::default()),
-        events: Arc::new(Default::default()),
         pool: PgPool::connect("postgres://openadr@localhost/openadr")
             .await
             .unwrap(), // FIXME make this configurable

@@ -18,4 +18,4 @@ create table event
 );
 
 create unique index event_event_name_uindex
-    on public.event (event_name);
+    on event (event_name);

@@ -152,10 +152,47 @@ impl Crud for EventPostgresSource {
     }
 
     async fn update(&self, id: &Self::Id, new: &Self::NewType) -> Result<Self::Type, Self::Error> {
-        todo!()
+        Ok(sqlx::query_as!(
+            PostgresEvent,
+            r#"
+            UPDATE event
+            SET modification_date_time = now(),
+                program_id = $2,
+                event_name = $3,
+                priority = $4,
+                targets = $5,
+                report_descriptors = $6,
+                payload_descriptors = $7,
+                interval_period = $8,
+                intervals = $9
+            WHERE id = $1
+            RETURNING *
+            "#,
+            id.as_str(),
+            new.program_id.as_str(),
+            new.event_name,
+            Into::<Option<i64>>::into(new.priority),
+            serde_json::to_value(&new.targets)?,
+            serde_json::to_value(&new.report_descriptors)?,
+            serde_json::to_value(&new.payload_descriptors)?,
+            serde_json::to_value(&new.interval_period)?,
+            serde_json::to_value(&new.intervals)?
+        )
+        .fetch_one(&self.db)
+        .await?
+        .try_into()?)
     }
 
     async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        todo!()
+        Ok(sqlx::query_as!(
+            PostgresEvent,
+            r#"
+            DELETE FROM event WHERE id = $1 RETURNING *
+            "#,
+            id.as_str()
+        )
+        .fetch_one(&self.db)
+        .await?
+        .try_into()?)
     }
 }
