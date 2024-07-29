@@ -20,8 +20,7 @@ create table program
     program_descriptions   jsonb,
     binding_events         boolean,
     local_price            boolean,
-    payload_descriptors    jsonb,
-    targets                jsonb
+    payload_descriptors    jsonb
 );
 
 create unique index program_program_name_uindex
@@ -38,7 +37,6 @@ create table event
     program_id             text        not null references program (id),
     event_name             text,
     priority               bigint,
-    targets                jsonb,
     report_descriptors     jsonb,
     payload_descriptors    jsonb,
     interval_period        jsonb,
@@ -56,7 +54,7 @@ create table report
             primary key,
     created_date_time      timestamptz not null,
     modification_date_time timestamptz not null,
-    
+
     program_id             text        not null references program (id),
     event_id               text        not null references event (id),
     client_name            text        not null,
@@ -68,3 +66,21 @@ create table report
 create unique index report_report_name_uindex
     on report (report_name);
 
+create table target
+(
+    id    bigserial primary key,
+    label text not null,
+    value text not null
+);
+
+create table program_target
+(
+    program_id text references program (id),
+    target_id  bigserial references target (id)
+);
+
+create table event_target
+(
+    event_id  text references event (id),
+    target_id bigserial references target (id)
+);
