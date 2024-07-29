@@ -84,3 +84,9 @@ create table event_target
     event_id  text references event (id),
     target_id bigserial references target (id)
 );
+
+CREATE TYPE target_tuple AS
+    (
+    label text,
+    value text
+    );
