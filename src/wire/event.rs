@@ -57,6 +57,25 @@ pub struct EventContent {
 }
 
 impl EventContent {
+    pub fn new(program_id: ProgramId, intervals: Vec<EventInterval>) -> Self {
+        assert!(
+            !intervals.is_empty(),
+            "`EventContent::new` called with no intervals!"
+        );
+
+        Self {
+            object_type: None,
+            program_id,
+            event_name: None,
+            priority: Priority::UNSPECIFIED,
+            targets: None,
+            report_descriptors: None,
+            payload_descriptors: None,
+            interval_period: None,
+            intervals,
+        }
+    }
+
     pub fn with_event_name(mut self, event_name: impl ToString) -> Self {
         self.event_name = Some(event_name.to_string());
         self
@@ -228,7 +247,7 @@ impl EventInterval {
 }
 
 /// Represents one or more values associated with a type. E.g. a type of PRICE contains a single float value.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventValuesMap {
     /// Enumerated or private string signifying the nature of values. E.G. \"PRICE\" indicates value is to be interpreted as a currency.
     #[serde(rename = "type")]

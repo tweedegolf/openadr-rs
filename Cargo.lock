@@ -765,6 +765,7 @@ dependencies = [
  "chrono",
  "iso8601-duration",
  "quickcheck",
+ "rangemap",
  "regex",
  "reqwest",
  "serde",
@@ -994,6 +995,12 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
 ]
+
+[[package]]
+name = "rangemap"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f60fcc7d6849342eff22c4350c8b9a989ee8ceabc4b481253e8946b9fe83d684"
 
 [[package]]
 name = "redox_syscall"

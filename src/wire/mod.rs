@@ -184,6 +184,17 @@ impl Duration {
         minute: 0.0,
         second: 0.0,
     });
+
+    pub const fn hours(hour: f32) -> Self {
+        Self(::iso8601_duration::Duration {
+            year: 0.0,
+            month: 0.0,
+            day: 0.0,
+            hour,
+            minute: 0.0,
+            second: 0.0,
+        })
+    }
 }
 
 impl std::str::FromStr for Duration {
