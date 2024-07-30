@@ -1,5 +1,3 @@
-use std::collections::hash_map::Entry;
-
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -15,9 +13,102 @@ use openadr::wire::target::TargetLabel;
 use openadr::wire::Event;
 
 use crate::api::{AppResponse, ValidatedQuery};
+use crate::data_source::Crud;
 use crate::error::AppError;
 use crate::error::AppError::{NotFound, NotImplemented};
 use crate::state::AppState;
+
+impl Crud<Event> for AppState {
+    type Id = EventId;
+    type NewType = EventContent;
+    type Error = AppError;
+    type Filter = QueryParams;
+
+    async fn create(&self, content: Self::NewType) -> Result<Event, Self::Error> {
+        if let Some(new_event_name) = &content.event_name {
+            if let Some((name, id)) = self
+                .events
+                .read()
+                .await
+                .iter()
+                .filter_map(|(_, p)| {
+                    p.content
+                        .event_name
+                        .clone()
+                        .map(|name| (name, p.id.clone()))
+                })
+                .find(|(name, _)| name == new_event_name)
+            {
+                warn!(id=%id, event_name=%name, "Conflicting event_name");
+                return Err(AppError::Conflict(format!(
+                    "Event with id {} has the same name",
+                    id
+                )));
+            }
+        }
+
+        let event = Event::new(content);
+        self.events
+            .write()
+            .await
+            .insert(event.id.clone(), event.clone());
+        Ok(event)
+    }
+
+    async fn retrieve(&self, id: &Self::Id) -> Result<Event, Self::Error> {
+        self.events
+            .read()
+            .await
+            .get(id)
+            .cloned()
+            .ok_or(AppError::NotFound)
+    }
+
+    async fn retrieve_all(&self, query_params: &Self::Filter) -> Result<Vec<Event>, Self::Error> {
+        self.events
+            .read()
+            .await
+            .values()
+            .filter_map(|event| match query_params.matches(event) {
+                Ok(true) => Some(Ok(event.clone())),
+                Ok(false) => None,
+                Err(err) => Some(Err(err)),
+            })
+            .skip(query_params.skip as usize)
+            .take(query_params.limit as usize)
+            .collect::<Result<Vec<_>, AppError>>()
+    }
+
+    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Event, Self::Error> {
+        if let Some((_, conflict)) = self.events.write().await.iter().find(|(inner_id, p)| {
+            id != *inner_id
+                && content.event_name.is_some()
+                && p.content.event_name == content.event_name
+        }) {
+            warn!(updated=%id, conflicting=%conflict.id, event_name=?content.event_name, "Conflicting event_name");
+            return Err(AppError::Conflict(format!(
+                "Event with id {} has the same name",
+                conflict.id
+            )));
+        }
+
+        match self.events.write().await.get_mut(id) {
+            Some(occupied) => {
+                occupied.content = content;
+                occupied.modification_date_time = Utc::now();
+                Ok(occupied.clone())
+            }
+            None => Err(AppError::NotFound),
+        }
+    }
+
+    async fn delete(&self, id: &Self::Id) -> Result<Event, Self::Error> {
+        match self.events.write().await.remove(id) {
+            Some(event) => Ok(event),
+            None => Err(AppError::NotFound),
+        }
+    }
+}
 
 pub async fn get_all(
     State(state): State<AppState>,
@@ -25,61 +116,23 @@ pub async fn get_all(
 ) -> AppResponse<Vec<Event>> {
     trace!(?query_params);
 
-    let events = state
-        .events
-        .read()
-        .await
-        .values()
-        .filter_map(|event| match query_params.matches(event) {
-            Ok(true) => Some(Ok(event.clone())),
-            Ok(false) => None,
-            Err(err) => Some(Err(err)),
-        })
-        .skip(query_params.skip as usize)
-        .take(query_params.limit as usize)
-        .collect::<Result<Vec<_>, AppError>>()?;
+    let events = <AppState as Crud<Event>>::retrieve_all(&state, &query_params).await?;
 
     Ok(Json(events))
 }
 
 pub async fn get(State(state): State<AppState>, Path(id): Path<EventId>) -> AppResponse<Event> {
-    Ok(Json(
-        state.events.read().await.get(&id).ok_or(NotFound)?.clone(),
-    ))
+    let event = <AppState as Crud<Event>>::retrieve(&state, &id).await?;
+    Ok(Json(event))
 }
 
 pub async fn add(
     State(state): State<AppState>,
     Json(new_event): Json<EventContent>,
 ) -> Result<(StatusCode, Json<Event>), AppError> {
-    let mut map = state.events.write().await;
+    let event = <AppState as Crud<Event>>::create(&state, new_event).await?;
 
-    if let Some(new_event_name) = &new_event.event_name {
-        if let Some((name, id)) = map
-            .iter()
-            .filter_map(|(_, p)| {
-                p.content
-                    .event_name
-                    .clone()
-                    .map(|name| (name, p.id.clone()))
-            })
-            .find(|(name, _)| name == new_event_name)
-        {
-            warn!(id=%id, event_name=%name, "Conflicting event_name");
-            return Err(AppError::Conflict(format!(
-                "Event with id {} has the same name",
-                id
-            )));
-        }
-    }
-
-    let event = Event::new(new_event);
-    map.insert(event.id.clone(), event.clone());
-
-    info!(%event.id,
-        event_name=?event.content.event_name,
-        "event created"
-    );
+    info!(%event.id, event_name=?event.content.event_name, "event created");
 
     Ok((StatusCode::CREATED, Json(event)))
 }
@@ -89,42 +142,18 @@ pub async fn edit(
     Path(id): Path<EventId>,
     Json(content): Json<EventContent>,
 ) -> AppResponse<Event> {
-    let mut map = state.events.write().await;
+    let event = <AppState as Crud<Event>>::update(&state, &id, content).await?;
 
-    if let Some((_, conflict)) = map.iter().find(|(inner_id, p)| {
-        id != **inner_id
-            && content.event_name.is_some()
-            && p.content.event_name == content.event_name
-    }) {
-        warn!(updated=%id, conflicting=%conflict.id, event_name=?content.event_name, "Conflicting event_name");
-        return Err(AppError::Conflict(format!(
-            "Event with id {} has the same name",
-            conflict.id
-        )));
-    }
+    info!(%event.id, event_name=?event.content.event_name, "event updated");
 
-    match map.entry(id) {
-        Entry::Occupied(mut entry) => {
-            let e = entry.get_mut();
-            e.content = content;
-            e.modification_date_time = Utc::now();
-
-            info!(%e.id,
-                event_name=?e.content.event_name,
-                "event created"
-            );
-
-            Ok(Json(e.clone()))
-        }
-        Entry::Vacant(_) => Err(NotFound),
-    }
+    Ok(Json(event))
 }
 
 pub async fn delete(State(state): State<AppState>, Path(id): Path<EventId>) -> AppResponse<Event> {
     match state.events.write().await.remove(&id) {
         None => Err(NotFound),
         Some(removed) => {
-            info!(%id, "deleted event");
+            info!(%id, "event deleted");
             Ok(Json(removed))
         }
     }

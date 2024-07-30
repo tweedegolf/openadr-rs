@@ -143,7 +143,7 @@ mod test {
     use super::*;
 
     fn test_program_id() -> ProgramId {
-        ProgramId("test-program-id".into())
+        ProgramId("test-program-id".parse().unwrap())
     }
 
     fn test_event_content(range: Range<u32>, value: i64) -> EventContent {

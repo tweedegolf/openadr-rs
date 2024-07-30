@@ -1,5 +1,3 @@
-use std::collections::hash_map::Entry;
-
 use axum::extract::{Path, State};
 use axum::Json;
 use chrono::Utc;
@@ -13,68 +11,121 @@ use openadr::wire::target::TargetLabel;
 use openadr::wire::Program;
 
 use crate::api::{AppResponse, ValidatedQuery};
+use crate::data_source::Crud;
 use crate::error::AppError;
-use crate::error::AppError::NotFound;
 use crate::state::AppState;
+
+impl Crud<Program> for AppState {
+    type Id = ProgramId;
+    type NewType = ProgramContent;
+    type Error = AppError;
+    type Filter = QueryParams;
+
+    async fn create(&self, new: Self::NewType) -> Result<Program, Self::Error> {
+        if let Some(conflict) = self
+            .programs
+            .read()
+            .await
+            .values()
+            .find(|p| p.content.program_name == new.program_name)
+        {
+            warn!(id=%conflict.id, program_name=%new.program_name, "Conflicting program_name");
+            return Err(AppError::Conflict(format!(
+                "Program with id {} has the same name",
+                conflict.id
+            )));
+        }
+
+        let program = Program::new(new);
+        self.programs
+            .write()
+            .await
+            .insert(program.id.clone(), program.clone());
+
+        info!(%program.id,
+            program.program_name=program.content.program_name,
+            "program created"
+        );
+
+        Ok(program)
+    }
+
+    async fn retrieve(&self, id: &Self::Id) -> Result<Program, Self::Error> {
+        self.programs
+            .read()
+            .await
+            .get(id)
+            .cloned()
+            .ok_or(AppError::NotFound)
+    }
+
+    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Program>, Self::Error> {
+        self.programs
+            .read()
+            .await
+            .values()
+            .filter_map(|program| match filter.matches(program) {
+                Ok(true) => Some(Ok(program.clone())),
+                Ok(false) => None,
+                Err(err) => Some(Err(err)),
+            })
+            .skip(filter.skip as usize)
+            .take(filter.limit as usize)
+            .collect::<Result<Vec<_>, AppError>>()
+    }
+
+    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Program, Self::Error> {
+        if let Some((_, conflict)) =
+            self.programs.read().await.iter().find(|(inner_id, p)| {
+                id != *inner_id && p.content.program_name == content.program_name
+            })
+        {
+            warn!(updated=%id, conflicting=%conflict.id, program_name=%content.program_name, "Conflicting program_name");
+            return Err(AppError::Conflict(format!(
+                "Program with id {} has the same name",
+                conflict.id
+            )));
+        }
+
+        match self.programs.write().await.get_mut(id) {
+            Some(occupied) => {
+                occupied.content = content;
+                occupied.modification_date_time = Utc::now();
+                Ok(occupied.clone())
+            }
+            None => Err(AppError::NotFound),
+        }
+    }
+
+    async fn delete(&self, id: &Self::Id) -> Result<Program, Self::Error> {
+        match self.programs.write().await.remove(id) {
+            Some(program) => Ok(program),
+            None => Err(AppError::NotFound),
+        }
+    }
+}
 
 pub async fn get_all(
     State(state): State<AppState>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Program>> {
     trace!(?query_params);
-    let programs = state
-        .programs
-        .read()
-        .await
-        .values()
-        .filter_map(|program| match query_params.matches(program) {
-            Ok(true) => Some(Ok(program.clone())),
-            Ok(false) => None,
-            Err(err) => Some(Err(err)),
-        })
-        .skip(query_params.skip as usize)
-        .take(query_params.limit as usize)
-        .collect::<Result<Vec<_>, AppError>>()?;
+
+    let programs = <AppState as Crud<Program>>::retrieve_all(&state, &query_params).await?;
 
     Ok(Json(programs))
 }
 
 pub async fn get(State(state): State<AppState>, Path(id): Path<ProgramId>) -> AppResponse<Program> {
-    Ok(Json(
-        state
-            .programs
-            .read()
-            .await
-            .get(&id)
-            .ok_or(NotFound)?
-            .clone(),
-    ))
+    let program = <AppState as Crud<Program>>::retrieve(&state, &id).await?;
+    Ok(Json(program))
 }
 
 pub async fn add(
     State(state): State<AppState>,
     Json(new_program): Json<ProgramContent>,
 ) -> Result<(StatusCode, Json<Program>), AppError> {
-    let mut map = state.programs.write().await;
-
-    if let Some((_, conflict)) = map
-        .iter()
-        .find(|(_, p)| p.content.program_name == new_program.program_name)
-    {
-        warn!(id=%conflict.id, program_name=%new_program.program_name, "Conflicting program_name");
-        return Err(AppError::Conflict(format!(
-            "Program with id {} has the same name",
-            conflict.id
-        )));
-    }
-
-    let program = Program::new(new_program);
-    map.insert(program.id.clone(), program.clone());
-
-    info!(%program.id,
-        program.program_name=program.content.program_name,
-        "program created"
-    );
+    let program = <AppState as Crud<Program>>::create(&state, new_program).await?;
 
     Ok((StatusCode::CREATED, Json(program)))
 }
@@ -84,46 +135,20 @@ pub async fn edit(
     Path(id): Path<ProgramId>,
     Json(content): Json<ProgramContent>,
 ) -> AppResponse<Program> {
-    let mut map = state.programs.write().await;
-    if let Some((_, conflict)) = map
-        .iter()
-        .find(|(inner_id, p)| id != **inner_id && p.content.program_name == content.program_name)
-    {
-        warn!(updated=%id, conflicting=%conflict.id, program_name=%content.program_name, "Conflicting program_name");
-        return Err(AppError::Conflict(format!(
-            "Program with id {} has the same name",
-            conflict.id
-        )));
-    }
+    let program = <AppState as Crud<Program>>::update(&state, &id, content).await?;
 
-    match map.entry(id) {
-        Entry::Occupied(mut entry) => {
-            let p = entry.get_mut();
-            p.content = content;
-            p.modification_date_time = Utc::now();
+    info!(%program.id, program.program_name=program.content.program_name, "program updated");
 
-            info!(%p.id,
-                    program.program_name=p.content.program_name,
-                    "program updated"
-            );
-
-            Ok(Json(p.clone()))
-        }
-        Entry::Vacant(_) => Err(NotFound),
-    }
+    Ok(Json(program))
 }
 
 pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<ProgramId>,
 ) -> AppResponse<Program> {
-    match state.programs.write().await.remove(&id) {
-        None => Err(NotFound),
-        Some(removed) => {
-            info!(%id, "deleted program");
-            Ok(Json(removed))
-        }
-    }
+    let program = <AppState as Crud<Program>>::delete(&state, &id).await?;
+    info!(%id, "deleted program");
+    Ok(Json(program))
 }
 
 #[derive(Deserialize, Validate, Debug)]
