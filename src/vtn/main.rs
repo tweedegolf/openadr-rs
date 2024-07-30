@@ -17,6 +17,7 @@ use api::report;
 use crate::state::AppState;
 
 mod api;
+mod data_source;
 mod error;
 mod state;
 
