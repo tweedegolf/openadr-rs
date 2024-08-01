@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use chrono::Utc;
 use serde::Deserialize;
-use tracing::{info, trace, warn};
+use tracing::{info, trace};
 use validator::Validate;
 
 use openadr::wire::event::EventContent;
@@ -25,28 +25,6 @@ impl Crud<Event> for AppState {
     type Filter = QueryParams;
 
     async fn create(&self, content: Self::NewType) -> Result<Event, Self::Error> {
-        if let Some(new_event_name) = &content.event_name {
-            if let Some((name, id)) = self
-                .events
-                .read()
-                .await
-                .iter()
-                .filter_map(|(_, p)| {
-                    p.content
-                        .event_name
-                        .clone()
-                        .map(|name| (name, p.id.clone()))
-                })
-                .find(|(name, _)| name == new_event_name)
-            {
-                warn!(id=%id, event_name=%name, "Conflicting event_name");
-                return Err(AppError::Conflict(format!(
-                    "Event with id {} has the same name",
-                    id
-                )));
-            }
-        }
-
         let event = Event::new(content);
         self.events
             .write()
@@ -80,18 +58,6 @@ impl Crud<Event> for AppState {
     }
 
     async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Event, Self::Error> {
-        if let Some((_, conflict)) = self.events.write().await.iter().find(|(inner_id, p)| {
-            id != *inner_id
-                && content.event_name.is_some()
-                && p.content.event_name == content.event_name
-        }) {
-            warn!(updated=%id, conflicting=%conflict.id, event_name=?content.event_name, "Conflicting event_name");
-            return Err(AppError::Conflict(format!(
-                "Event with id {} has the same name",
-                conflict.id
-            )));
-        }
-
         match self.events.write().await.get_mut(id) {
             Some(occupied) => {
                 occupied.content = content;
