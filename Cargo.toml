@@ -31,6 +31,9 @@ rangemap = "1.5.1"
 
 [dev-dependencies]
 quickcheck = "1.0.3"
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1.0"
+mime = "0.3"
 
 [lib]
 name = "openadr"

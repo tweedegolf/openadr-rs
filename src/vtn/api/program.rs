@@ -170,6 +170,7 @@ fn get_50() -> u32 {
 
 impl QueryParams {
     pub fn matches(&self, program: &Program) -> Result<bool, AppError> {
+        dbg!(&self);
         if let Some(target_type) = self.target_type.clone() {
             return match target_type {
                 TargetLabel::ProgramName => Ok(self
@@ -186,5 +187,240 @@ impl QueryParams {
             };
         }
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{self, Request, Response, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt; // for `collect`
+    use tower::{Service, ServiceExt}; // for `call`, `oneshot`, and `ready`
+
+    fn default_content() -> ProgramContent {
+        ProgramContent {
+            object_type: None,
+            program_name: "program_name".to_string(),
+            program_long_name: Some("program_long_name".to_string()),
+            retailer_name: Some("retailer_name".to_string()),
+            retailer_long_name: Some("retailer_long_name".to_string()),
+            program_type: None,
+            country: None,
+            principal_subdivision: None,
+            time_zone_offset: None,
+            interval_period: None,
+            program_descriptions: None,
+            binding_events: None,
+            local_price: None,
+            payload_descriptors: None,
+            targets: None,
+        }
+    }
+
+    fn program_request(method: http::Method, program: Program) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(format!("/programs/{}", program.id))
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .body(Body::from(serde_json::to_vec(&program).unwrap()))
+            .unwrap()
+    }
+
+    async fn state_with_programs(programs: Vec<Program>) -> AppState {
+        let state = AppState::default();
+
+        for program in programs {
+            state
+                .programs
+                .write()
+                .await
+                .insert(program.id.clone(), program);
+        }
+
+        state
+    }
+
+    #[tokio::test]
+    async fn get() {
+        let program = Program::new(default_content());
+        let program_id = program.id.clone();
+
+        let state = state_with_programs(vec![program.clone()]).await;
+        let app = crate::app_with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(http::Method::GET)
+                    .uri(format!("/programs/{program_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let db_program: Program = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(program, db_program);
+    }
+
+    #[tokio::test]
+    async fn update() {
+        let program = Program::new(default_content());
+
+        let state = state_with_programs(vec![program.clone()]).await;
+        let app = crate::app_with_state(state);
+
+        let response = app
+            .oneshot(program_request(http::Method::PUT, program.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let db_program: Program = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(program.content, db_program.content);
+        assert!(program.modification_date_time < db_program.modification_date_time);
+    }
+
+    #[tokio::test]
+    async fn update_same_name() {
+        let program = Program::new(default_content());
+
+        let state = state_with_programs(vec![program.clone()]).await;
+        let app = crate::app_with_state(state);
+
+        // different id, same (default) name
+        let program = Program::new(default_content());
+
+        let response = app
+            .oneshot(program_request(http::Method::PUT, program.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn create_same_name() {
+        let state = state_with_programs(vec![]).await;
+        let mut app = crate::app_with_state(state);
+
+        let program = Program::new(default_content());
+        let content = program.content;
+
+        let request = Request::builder()
+            .method(http::Method::POST)
+            .uri("/programs")
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .unwrap();
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let request = Request::builder()
+            .method(http::Method::POST)
+            .uri("/programs")
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    async fn retrieve_all_with_filter_help(app: &mut Router, query_params: &str) -> Response<Body> {
+        let request = Request::builder()
+            .method(http::Method::GET)
+            .uri(format!("/programs?{query_params}"))
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .body(Body::empty())
+            .unwrap();
+
+        ServiceExt::<Request<Body>>::ready(app)
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn retrieve_all_with_filter() {
+        let program1 = ProgramContent {
+            program_name: "program1".to_string(),
+            ..default_content()
+        };
+        let program2 = ProgramContent {
+            program_name: "program2".to_string(),
+            ..default_content()
+        };
+        let program3 = ProgramContent {
+            program_name: "program3".to_string(),
+            ..default_content()
+        };
+
+        let programs = vec![
+            Program::new(program1),
+            Program::new(program2),
+            Program::new(program3),
+        ];
+
+        let state = state_with_programs(programs).await;
+        let mut app = crate::app_with_state(state);
+
+        // no query params
+        let response = retrieve_all_with_filter_help(&mut app, "").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 3);
+
+        // skip
+        let response = retrieve_all_with_filter_help(&mut app, "skip=1").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 2);
+
+        // limit
+        let response = retrieve_all_with_filter_help(&mut app, "limit=2").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 2);
+
+        // program name
+        let response = retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE").await;
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+
+        let response = retrieve_all_with_filter_help(
+            &mut app,
+            "targetType=PROGRAM_NAME&targetValues=program1&targetValues=program2",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 2);
     }
 }

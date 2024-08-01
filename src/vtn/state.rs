@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct AppState {
     pub programs: Arc<RwLock<HashMap<ProgramId, Program>>>,
     pub reports: Arc<RwLock<HashMap<ReportId, Report>>>,
