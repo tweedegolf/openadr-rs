@@ -131,6 +131,10 @@ impl ProgramId {
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
+
+    pub fn new(identifier: &str) -> Option<Self> {
+        Some(Self(identifier.parse().ok()?))
+    }
 }
 
 /// Used as discriminator, e.g. notification.object

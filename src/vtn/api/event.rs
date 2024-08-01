@@ -58,6 +58,8 @@ impl Crud<Event> for AppState {
     }
 
     async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Event, Self::Error> {
+        dbg!(&id);
+        dbg!(self.events.read().await);
         match self.events.write().await.get_mut(id) {
             Some(occupied) => {
                 occupied.content = content;
@@ -108,7 +110,8 @@ pub async fn edit(
     Path(id): Path<EventId>,
     Json(content): Json<EventContent>,
 ) -> AppResponse<Event> {
-    let event = <AppState as Crud<Event>>::update(&state, &id, content).await?;
+    dbg!("edit");
+    let event = dbg!(<AppState as Crud<Event>>::update(&state, &id, content).await)?;
 
     info!(%event.id, event_name=?event.content.event_name, "event updated");
 
@@ -155,5 +158,277 @@ impl QueryParams {
         } else {
             Ok(true)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{self, Request, Response, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt;
+    use openadr::wire::event::Priority;
+    // for `collect`
+    use tower::{Service, ServiceExt}; // for `call`, `oneshot`, and `ready`
+
+    fn default_content() -> EventContent {
+        EventContent {
+            object_type: None,
+            program_id: ProgramId::new("program_id").unwrap(),
+            event_name: Some("event_name".to_string()),
+            priority: Priority::MAX,
+            report_descriptors: None,
+            interval_period: None,
+            intervals: vec![],
+            payload_descriptors: None,
+            targets: None,
+        }
+    }
+
+    fn event_request(method: http::Method, event: Event) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(format!("/events/{}", event.id))
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .body(Body::from(serde_json::to_vec(&event).unwrap()))
+            .unwrap()
+    }
+
+    async fn state_with_events(events: Vec<Event>) -> AppState {
+        let state = AppState::default();
+
+        for program in events {
+            state
+                .events
+                .write()
+                .await
+                .insert(program.id.clone(), program);
+        }
+
+        state
+    }
+
+    #[tokio::test]
+    async fn get() {
+        let event = Event::new(default_content());
+        let event_id = event.id.clone();
+
+        let state = state_with_events(vec![event.clone()]).await;
+        let app = crate::app_with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(http::Method::GET)
+                    .uri(format!("/events/{event_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let db_event: Event = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(event, db_event);
+    }
+
+    #[tokio::test]
+    async fn delete() {
+        let event1 = EventContent {
+            program_id: ProgramId::new("program1").unwrap(),
+            event_name: Some("event1".to_string()),
+            ..default_content()
+        };
+        let event2 = EventContent {
+            program_id: ProgramId::new("program2").unwrap(),
+            event_name: Some("event2".to_string()),
+            ..default_content()
+        };
+        let event3 = EventContent {
+            program_id: ProgramId::new("program3").unwrap(),
+            event_name: Some("event3".to_string()),
+            ..default_content()
+        };
+
+        let events = vec![
+            Event::new(event1),
+            Event::new(event2.clone()),
+            Event::new(event3),
+        ];
+        let event_id = events[1].id.clone();
+
+        let state = state_with_events(events).await;
+        let mut app = crate::app_with_state(state);
+
+        let request = Request::builder()
+            .method(http::Method::DELETE)
+            .uri(format!("/events/{event_id}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let db_event: Event = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(event2, db_event.content);
+
+        let response = retrieve_all_with_filter_help(&mut app, "").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn update() {
+        let event = Event::new(default_content());
+
+        let state = state_with_events(vec![event.clone()]).await;
+        let app = crate::app_with_state(state);
+
+        let response = app
+            .oneshot(event_request(http::Method::PUT, event.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let db_program: Event = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(event.content, db_program.content);
+        assert!(event.modification_date_time < db_program.modification_date_time);
+    }
+
+    #[tokio::test]
+    async fn create_same_name() {
+        let state = state_with_events(vec![]).await;
+        let mut app = crate::app_with_state(state);
+
+        let event = Event::new(default_content());
+        let content = event.content;
+
+        let request = Request::builder()
+            .method(http::Method::POST)
+            .uri("/events")
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .unwrap();
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let request = Request::builder()
+            .method(http::Method::POST)
+            .uri("/events")
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .unwrap();
+
+        // event names don't need to be unique
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    async fn retrieve_all_with_filter_help(app: &mut Router, query_params: &str) -> Response<Body> {
+        let request = Request::builder()
+            .method(http::Method::GET)
+            .uri(format!("/events?{query_params}"))
+            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+            .body(Body::empty())
+            .unwrap();
+
+        ServiceExt::<Request<Body>>::ready(app)
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn retrieve_all_with_filter() {
+        let event1 = EventContent {
+            program_id: ProgramId::new("program1").unwrap(),
+            event_name: Some("event1".to_string()),
+            ..default_content()
+        };
+        let event2 = EventContent {
+            program_id: ProgramId::new("program2").unwrap(),
+            event_name: Some("event2".to_string()),
+            ..default_content()
+        };
+        let event3 = EventContent {
+            program_id: ProgramId::new("program3").unwrap(),
+            event_name: Some("event3".to_string()),
+            ..default_content()
+        };
+
+        let events = vec![Event::new(event1), Event::new(event2), Event::new(event3)];
+
+        let state = state_with_events(events).await;
+        let mut app = crate::app_with_state(state);
+
+        // no query params
+        let response = retrieve_all_with_filter_help(&mut app, "").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 3);
+
+        // skip
+        let response = retrieve_all_with_filter_help(&mut app, "skip=1").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 2);
+
+        // limit
+        let response = retrieve_all_with_filter_help(&mut app, "limit=2").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 2);
+
+        // program name
+        let response = retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE").await;
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+
+        let response = retrieve_all_with_filter_help(
+            &mut app,
+            "targetType=PROGRAM_NAME&targetValues=program1&targetValues=program2",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+
+        let response = retrieve_all_with_filter_help(&mut app, "programID=program1").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 1);
     }
 }

@@ -170,7 +170,6 @@ fn get_50() -> u32 {
 
 impl QueryParams {
     pub fn matches(&self, program: &Program) -> Result<bool, AppError> {
-        dbg!(&self);
         if let Some(target_type) = self.target_type.clone() {
             return match target_type {
                 TargetLabel::ProgramName => Ok(self
@@ -269,6 +268,59 @@ mod test {
         let db_program: Program = serde_json::from_slice(&body).unwrap();
 
         assert_eq!(program, db_program);
+    }
+
+    #[tokio::test]
+    async fn delete() {
+        let program1 = ProgramContent {
+            program_name: "program1".to_string(),
+            ..default_content()
+        };
+        let program2 = ProgramContent {
+            program_name: "program2".to_string(),
+            ..default_content()
+        };
+        let program3 = ProgramContent {
+            program_name: "program3".to_string(),
+            ..default_content()
+        };
+
+        let programs = vec![
+            Program::new(program1),
+            Program::new(program2.clone()),
+            Program::new(program3),
+        ];
+        let program_id = programs[1].id.clone();
+
+        let state = state_with_programs(programs).await;
+        let mut app = crate::app_with_state(state);
+
+        let request = Request::builder()
+            .method(http::Method::DELETE)
+            .uri(format!("/programs/{program_id}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+            .await
+            .unwrap()
+            .call(request)
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let db_program: Program = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(program2, db_program.content);
+
+        let response = retrieve_all_with_filter_help(&mut app, "").await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 2);
     }
 
     #[tokio::test]
