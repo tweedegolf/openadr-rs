@@ -58,8 +58,6 @@ impl Crud<Event> for AppState {
     }
 
     async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Event, Self::Error> {
-        dbg!(&id);
-        dbg!(self.events.read().await);
         match self.events.write().await.get_mut(id) {
             Some(occupied) => {
                 occupied.content = content;
@@ -110,8 +108,7 @@ pub async fn edit(
     Path(id): Path<EventId>,
     Json(content): Json<EventContent>,
 ) -> AppResponse<Event> {
-    dbg!("edit");
-    let event = dbg!(<AppState as Crud<Event>>::update(&state, &id, content).await)?;
+    let event = <AppState as Crud<Event>>::update(&state, &id, content).await?;
 
     info!(%event.id, event_name=?event.content.event_name, "event updated");
 
