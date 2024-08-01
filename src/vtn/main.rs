@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::routing::get;
 use axum::Router;
 use tokio::net::TcpListener;
@@ -28,13 +26,22 @@ async fn main() {
         .with(EnvFilter::from_default_env())
         .init();
 
-    let state = AppState {
-        programs: Arc::new(Default::default()),
-        reports: Arc::new(Default::default()),
-        events: Arc::new(Default::default()),
-    };
+    let addr = "0.0.0.0:3000";
+    let listener = TcpListener::bind(addr).await.unwrap();
+    info!("listening on http://{}", listener.local_addr().unwrap());
 
-    let app = Router::new()
+    let state = AppState::default();
+
+    if let Err(e) = axum::serve(listener, app_with_state(state))
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+    {
+        error!("webserver crashed: {}", e);
+    }
+}
+
+pub(crate) fn app_with_state(state: AppState) -> Router {
+    Router::new()
         .route("/programs", get(program::get_all).post(program::add))
         .route(
             "/programs/:id",
@@ -51,17 +58,7 @@ async fn main() {
             get(event::get).put(event::edit).delete(event::delete),
         )
         .layer(TraceLayer::new_for_http())
-        .with_state(state);
-
-    let addr = "0.0.0.0:3000";
-    let listener = TcpListener::bind(addr).await.unwrap();
-    info!("listening on http://{}", listener.local_addr().unwrap());
-    if let Err(e) = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-    {
-        error!("webserver crashed: {}", e);
-    }
+        .with_state(state)
 }
 
 async fn shutdown_signal() {
