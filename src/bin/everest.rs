@@ -3,12 +3,33 @@ use std::{error::Error, time::Duration};
 use openadr::{
     wire::{
         event::{EventType, EventValuesMap},
-        values_map::{Value, ValueType, ValuesMap},
+        values_map::Value,
     },
-    EventClient, ProgramClient, ProgramContent, Target, Timeline,
+    EventClient, ProgramContent, Target, Timeline,
 };
 use tokio::select;
 use uuid::Uuid;
+
+async fn wait_for_next_start(entries: &[ScheduleResEntry]) -> Option<ScheduleResEntry> {
+    match entries {
+        [] => {
+            // just wait for a timeline to come in
+            std::future::pending::<()>().await;
+            None // unreachable in practice
+        }
+        [.., last] => {
+            let delta = last.timestamp - chrono::Utc::now();
+
+            match delta.to_std() {
+                Ok(delta) => {
+                    tokio::time::sleep(delta).await;
+                    Some(*last)
+                }
+                Err(_) => {}
+            }
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -39,27 +60,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut enforced_limits = None;
 
         loop {
-            let next_job_start = || async {
-                match job_stack.last() {
-                    None => {
-                        // just wait for a timeline to come in
-                        std::future::pending::<()>().await;
-                        true
-                    }
-                    Some(job) => {
-                        let delta = job.timestamp - chrono::Utc::now();
-
-                        match delta.to_std() {
-                            Ok(delta) => {
-                                tokio::time::sleep(delta).await;
-                                true
-                            }
-                            Err(_) => false,
-                        }
-                    }
-                }
-            };
-
             select! {
                 result = receiver.changed() => {
                     match result {
@@ -79,10 +79,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 }
-                send_update = next_job_start() => {
-                    if send_update {
-                    } else {
-                        let _ = job_stack.pop();
+                opt_entry = wait_for_next_start(&job_stack) => {
+                    match opt_entry {
+                        Some(entry) => {
+                            let Some(ref enforced_limits) = enforced_limits else {
+                                unreachable!();
+                            };
+
+                            let mut enforced_limits = enforced_limits.clone();
+                            enforced_limits.limits_root_side = entry.limits_to_root;
+                            let _ = enforced_limits;
+                        }
+                        None => {
+
+                        }
                     }
                 }
             }
@@ -93,6 +103,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 // https://github.com/tdittr/everest-core/blob/openadr/types/energy.yaml#L213
+#[derive(Debug, Clone)]
 struct EnforcedLimits {
     uuid: String,
     valid_until: chrono::DateTime<chrono::Utc>,
@@ -103,7 +114,7 @@ struct EnforcedLimits {
 impl EnforcedLimits {
     fn from_events(program_content: &ProgramContent, events: &[EventClient]) -> Self {
         let events = events.iter().map(|e| e.data()).collect();
-        let timeline = Timeline::new(program_content, events).unwrap();
+        let timeline = Timeline::from_events(program_content, events).unwrap();
         Self::from_timeline(timeline)
     }
 
