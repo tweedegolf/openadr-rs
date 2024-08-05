@@ -2,6 +2,7 @@
 use std::{collections::HashSet, ops::Range};
 
 use chrono::{DateTime, Utc};
+use rangemap::RangeMap;
 use tracing::warn;
 
 use crate::{
@@ -35,7 +36,16 @@ pub struct Timeline {
 }
 
 impl Timeline {
-    pub fn new(program: &ProgramContent, mut events: Vec<&EventContent>) -> Result<Self, ()> {
+    pub fn new() -> Self {
+        Self {
+            data: rangemap::RangeMap::new(),
+        }
+    }
+
+    pub fn from_events(
+        program: &ProgramContent,
+        mut events: Vec<&EventContent>,
+    ) -> Result<Self, ()> {
         let mut data = Self::default();
 
         events.sort_by_key(|e| e.priority);
@@ -95,6 +105,13 @@ impl Timeline {
             seen: HashSet::default(),
         }
     }
+
+    pub fn into_iter(self) -> IntoIter {
+        IntoIter {
+            iter: self.data.into_iter(),
+            seen: HashSet::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +140,38 @@ impl<'a> Iterator for Iter<'a> {
                 false => None,
             },
             value_map: &internal.value_map,
+        };
+
+        Some((range, interval))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedInterval {
+    /// Indicates a randomization time that may be applied to start.
+    pub randomize_start: Option<chrono::Duration>,
+    /// The actual values that are active during this interval
+    pub value_map: Vec<EventValuesMap>,
+}
+
+pub struct IntoIter {
+    iter: rangemap::map::IntoIter<DateTime<Utc>, InternalInterval>,
+    seen: HashSet<u32>,
+}
+
+impl Iterator for IntoIter {
+    type Item = (Range<DateTime<Utc>>, OwnedInterval);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (range, internal) = self.iter.next()?;
+
+        let interval = OwnedInterval {
+            // only the first occurence of an id should randomize its start
+            randomize_start: match self.seen.insert(internal.id) {
+                true => internal.randomize_start,
+                false => None,
+            },
+            value_map: internal.value_map,
         };
 
         Some((range, interval))
