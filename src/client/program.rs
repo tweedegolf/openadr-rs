@@ -6,7 +6,7 @@ use crate::{
         target::TargetLabel,
         Event, Program,
     },
-    EventClient, EventContent, ProgramContent, ProgramId, Result, Target,
+    Error, EventClient, EventContent, ProgramContent, ProgramId, Result, Target, Timeline,
 };
 
 use super::ClientRef;
@@ -191,5 +191,11 @@ impl ProgramClient {
         }
 
         Ok(events)
+    }
+
+    pub async fn get_timeline(&mut self) -> Result<Timeline> {
+        let events = self.get_all_events().await?;
+        let events = events.iter().map(|e| e.data()).collect();
+        Timeline::from_events(self.data(), events).map_err(|_| Error::InvalidInterval)
     }
 }
