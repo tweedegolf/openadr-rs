@@ -2,7 +2,6 @@
 use std::{collections::HashSet, ops::Range};
 
 use chrono::{DateTime, Utc};
-use rangemap::RangeMap;
 use tracing::warn;
 
 use crate::{
@@ -30,7 +29,7 @@ struct InternalInterval {
 /// Intervals are sorted by their timestamp. The intervals will not overlap, but there may be gaps
 /// between intervals.
 #[allow(unused)]
-#[derive(Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Timeline {
     data: rangemap::RangeMap<chrono::DateTime<chrono::Utc>, InternalInterval>,
 }
@@ -111,6 +110,33 @@ impl Timeline {
             iter: self.data.into_iter(),
             seen: HashSet::default(),
         }
+    }
+
+    pub fn at_datetime(
+        &self,
+        datetime: &DateTime<Utc>,
+    ) -> Option<(&Range<DateTime<Utc>>, Interval)> {
+        self.data.get_key_value(&datetime).map(|(k, v)| {
+            (
+                k,
+                Interval {
+                    randomize_start: v.randomize_start,
+                    value_map: &v.value_map,
+                },
+            )
+        })
+    }
+
+    pub fn next_update(&self, datetime: &DateTime<Utc>) -> Option<DateTime<Utc>> {
+        if let Some((k, _)) = self.at_datetime(datetime) {
+            return Some(k.end);
+        }
+
+        let (last_range, _) = self.data.last_range_value()?;
+
+        let (range, _) = self.data.overlapping(*datetime..last_range.end).next()?;
+
+        Some(range.start)
     }
 }
 
@@ -251,7 +277,7 @@ mod test {
         let event2 = test_event_content(5..15, 43);
 
         // first come, last serve
-        let tl1 = Timeline::new(&program, vec![&event1, &event2]).unwrap();
+        let tl1 = Timeline::from_events(&program, vec![&event1, &event2]).unwrap();
         assert_eq!(
             tl1.data.into_iter().collect::<Vec<_>>(),
             vec![
@@ -261,7 +287,7 @@ mod test {
         );
 
         // first come, last serve
-        let tl2 = Timeline::new(&program, vec![&event2, &event1]).unwrap();
+        let tl2 = Timeline::from_events(&program, vec![&event2, &event1]).unwrap();
         assert_eq!(
             tl2.data.into_iter().collect::<Vec<_>>(),
             vec![
@@ -276,7 +302,7 @@ mod test {
         let event1 = test_event_content(0..10, 42).with_priority(Priority::new(1));
         let event2 = test_event_content(5..15, 43).with_priority(Priority::new(2));
 
-        let tl = Timeline::new(&ProgramContent::new("p"), vec![&event1, &event2]).unwrap();
+        let tl = Timeline::from_events(&ProgramContent::new("p"), vec![&event1, &event2]).unwrap();
         assert_eq!(
             tl.data.into_iter().collect::<Vec<_>>(),
             vec![
@@ -286,7 +312,7 @@ mod test {
             "a lower priority event MUST NOT overwrite a higher priority one",
         );
 
-        let tl = Timeline::new(&ProgramContent::new("p"), vec![&event2, &event1]).unwrap();
+        let tl = Timeline::from_events(&ProgramContent::new("p"), vec![&event2, &event1]).unwrap();
         assert_eq!(
             tl.data.into_iter().collect::<Vec<_>>(),
             vec![
@@ -302,7 +328,7 @@ mod test {
         let event1 = test_event_content(0..10, 42).with_priority(Priority::new(2));
         let event2 = test_event_content(5..15, 43).with_priority(Priority::new(1));
 
-        let tl = Timeline::new(&ProgramContent::new("p"), vec![&event1, &event2]).unwrap();
+        let tl = Timeline::from_events(&ProgramContent::new("p"), vec![&event1, &event2]).unwrap();
         assert_eq!(
             tl.data.into_iter().collect::<Vec<_>>(),
             vec![
@@ -312,7 +338,7 @@ mod test {
             "a higher priority event MUST overwrite a lower priority one",
         );
 
-        let tl = Timeline::new(&ProgramContent::new("p"), vec![&event2, &event1]).unwrap();
+        let tl = Timeline::from_events(&ProgramContent::new("p"), vec![&event2, &event1]).unwrap();
         assert_eq!(
             tl.data.into_iter().collect::<Vec<_>>(),
             vec![
@@ -349,7 +375,7 @@ mod test {
             )
         };
 
-        let tl = Timeline::new(&ProgramContent::new("p"), vec![&event1, &event2]).unwrap();
+        let tl = Timeline::from_events(&ProgramContent::new("p"), vec![&event1, &event2]).unwrap();
         assert_eq!(
             tl.iter().map(|(_, i)| i).collect::<Vec<_>>(),
             vec![
