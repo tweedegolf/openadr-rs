@@ -4,16 +4,11 @@ use openadr::{
         event::{EventType, EventValuesMap},
         values_map::Value,
     },
-    Target, Timeline,
+    ProgramClient, Target, Timeline,
 };
-use std::future::Future;
-use std::{
-    error::Error,
-    sync::atomic::{AtomicUsize, Ordering},
-    time::Duration,
-};
-use tokio::select;
+use std::{error::Error, time::Duration};
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::{select, sync::mpsc};
 use uuid::Uuid;
 
 async fn wait_for_next_start(clock: &impl Clock, timeline: &Timeline) {
@@ -23,9 +18,10 @@ async fn wait_for_next_start(clock: &impl Clock, timeline: &Timeline) {
         return std::future::pending().await; // Wait forever
     };
 
+    // if the wait time is negative, return immediately
     match (next - now).to_std() {
-        Err(_) => return,
-        Ok(delta) => tokio::time::sleep(delta).await,
+        Err(_) => {}
+        Ok(wait_time) => tokio::time::sleep(wait_time).await,
     }
 }
 
@@ -43,45 +39,50 @@ impl Clock for ChronoClock {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    run(ChronoClock).await
-}
-
-async fn run(clock: impl Clock) -> Result<(), Box<dyn Error>> {
-    // channel used to send new timelines
-    let (sender, receiver) = tokio::sync::mpsc::channel(1);
-
     let client = openadr::Client::new("http://localhost:3000/".try_into()?);
-    let mut program = client.get_program(Target::Program("name")).await?;
+    let program = client.get_program(Target::Program("name")).await?;
 
+    // channel used to send new timelines
+    let (sender, receiver) = mpsc::channel(1);
     let poll_interval = Duration::from_secs(30);
-
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(poll_interval).await;
-
-            let timeline = program.get_timeline().await?;
-
-            sender.send(timeline).await.unwrap();
-        }
-
-        #[allow(unreachable_code)]
-        Ok::<(), openadr::Error>(())
-    });
+    tokio::spawn(poll_timeline(program, poll_interval, sender));
 
     let (output_sender, output_receiver) = tokio::sync::mpsc::channel(1);
-
     tokio::spawn(update_listener(ChronoClock, receiver, output_sender));
 
+    // TODO actually hook this up
+    std::mem::forget(output_receiver);
+
     Ok(())
+}
+
+async fn poll_timeline(
+    mut program: ProgramClient,
+    poll_interval: std::time::Duration,
+    sender: mpsc::Sender<Timeline>,
+) -> Result<(), openadr::Error> {
+    loop {
+        tokio::time::sleep(poll_interval).await;
+
+        let timeline = program.get_timeline().await?;
+
+        let Ok(_) = sender.send(timeline).await else {
+            return Ok(());
+        };
+    }
 }
 
 async fn update_listener(
     clock: impl Clock,
     mut receiver: Receiver<Timeline>,
-    mut sender: Sender<EnforcedLimits>,
+    sender: Sender<EnforcedLimits>,
 ) {
     let mut timeline = Timeline::new();
     loop {
+        // wait for the next thing to respond to. That is either:
+        //
+        // - the next interval from our timeline is starting
+        // - the timeline got updated
         select! {
             result = receiver.recv() => {
                 match result {
@@ -96,6 +97,8 @@ async fn update_listener(
 
         let now = clock.now();
 
+        // normally, we expect this to return, but due to e.g. time synchronization, we may wake up
+        // without any interval to actually send upstream.
         let Some(current) = timeline.at_datetime(&now) else {
             continue;
         };
@@ -104,11 +107,12 @@ async fn update_listener(
         let mut valid_until = None;
 
         for (range, interval) in timeline.iter() {
+            // skip anything that is already complete
             if range.end < now {
                 continue;
             }
 
-            valid_until = Ord::max(valid_until, Some(range.end.clone()));
+            valid_until = Ord::max(valid_until, Some(range.end));
 
             let entry = ScheduleResEntry {
                 timestamp: range.start,
@@ -118,16 +122,19 @@ async fn update_listener(
             schedule.push(entry);
         }
 
-        let enforced_limits = EnforcedLimits {
-            uuid: Uuid::new_v4().to_string(),
-            valid_until: valid_until.unwrap(),
-            limits_root_side: LimitsRes::try_from_event_values(current.1.value_map).unwrap(),
-            schedule,
-        };
+        let opt_limits = LimitsRes::try_from_event_values(current.1.value_map);
+        if let (Some(valid_until), Some(limits_root_side)) = (valid_until, opt_limits) {
+            let enforced_limits = EnforcedLimits {
+                uuid: Uuid::new_v4().to_string(),
+                valid_until,
+                limits_root_side,
+                schedule,
+            };
 
-        let Ok(()) = sender.send(enforced_limits).await else {
-            break;
-        };
+            let Ok(()) = sender.send(enforced_limits).await else {
+                break;
+            };
+        }
     }
 }
 
@@ -158,13 +165,13 @@ impl LimitsRes {
     fn try_from_event_values(values: &[EventValuesMap]) -> Option<Self> {
         for EventValuesMap { value_type, values } in values {
             if let EventType::ImportCapacityLimit = value_type {
-                if let [Value::Number(value)] = &values[..] {
-                    return Some(Self {
-                        total_power_w: *value,
-                    });
-                } else {
-                    panic!("invalid values {:?}", values);
-                }
+                let total_power_w = match &values[..] {
+                    [Value::Integer(value)] => *value as f64,
+                    [Value::Number(value)] => *value,
+                    other => panic!("invalid values {other:?}"),
+                };
+
+                return Some(Self { total_power_w });
             }
         }
 
@@ -178,9 +185,8 @@ mod test {
     use openadr::wire::event::EventInterval;
     use openadr::wire::interval::IntervalPeriod;
     use openadr::{EventContent, ProgramContent, ProgramId};
-    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
-    use tracing_subscriber::fmt::time;
 
     struct TestingClock(AtomicU64);
 
@@ -282,7 +288,7 @@ mod test {
         let program = ProgramContent::new("Limits for Arthur Dent");
         let event = EventContent::new(ProgramId::new("ad").unwrap(), intervals);
         let events = vec![&event];
-        let timeline = Timeline::from_events(&program, events).unwrap();
-        timeline
+
+        Timeline::from_events(&program, events).unwrap()
     }
 }
