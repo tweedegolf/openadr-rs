@@ -41,10 +41,11 @@ impl Timeline {
         }
     }
 
-    pub fn from_events(
-        program: &ProgramContent,
-        mut events: Vec<&EventContent>,
-    ) -> Result<Self, ()> {
+    /// Returns:
+    ///
+    /// - `None` if no interval is specified in the input
+    /// - `Some(timeline)` otherwise
+    pub fn from_events(program: &ProgramContent, mut events: Vec<&EventContent>) -> Option<Self> {
         let mut data = Self::default();
 
         events.sort_by_key(|e| e.priority);
@@ -59,11 +60,7 @@ impl Timeline {
 
             for event_interval in &event.intervals {
                 // use the even't interval period when the interval doesn't specify one
-                let period = event_interval
-                    .interval_period
-                    .as_ref()
-                    .or(default_period)
-                    .ok_or(())?;
+                let period = event_interval.interval_period.as_ref().or(default_period)?;
 
                 let IntervalPeriod {
                     start,
@@ -95,7 +92,7 @@ impl Timeline {
             }
         }
 
-        Ok(data)
+        Some(data)
     }
 
     pub fn iter(&self) -> Iter<'_> {
@@ -105,26 +102,18 @@ impl Timeline {
         }
     }
 
-    pub fn into_iter(self) -> IntoIter {
-        IntoIter {
-            iter: self.data.into_iter(),
-            seen: HashSet::default(),
-        }
-    }
-
     pub fn at_datetime(
         &self,
         datetime: &DateTime<Utc>,
     ) -> Option<(&Range<DateTime<Utc>>, Interval)> {
-        self.data.get_key_value(&datetime).map(|(k, v)| {
-            (
-                k,
-                Interval {
-                    randomize_start: v.randomize_start,
-                    value_map: &v.value_map,
-                },
-            )
-        })
+        let (range, internal_interval) = self.data.get_key_value(datetime)?;
+
+        let interval = Interval {
+            randomize_start: internal_interval.randomize_start,
+            value_map: &internal_interval.value_map,
+        };
+
+        Some((range, interval))
     }
 
     pub fn next_update(&self, datetime: &DateTime<Utc>) -> Option<DateTime<Utc>> {
@@ -166,38 +155,6 @@ impl<'a> Iterator for Iter<'a> {
                 false => None,
             },
             value_map: &internal.value_map,
-        };
-
-        Some((range, interval))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OwnedInterval {
-    /// Indicates a randomization time that may be applied to start.
-    pub randomize_start: Option<chrono::Duration>,
-    /// The actual values that are active during this interval
-    pub value_map: Vec<EventValuesMap>,
-}
-
-pub struct IntoIter {
-    iter: rangemap::map::IntoIter<DateTime<Utc>, InternalInterval>,
-    seen: HashSet<u32>,
-}
-
-impl Iterator for IntoIter {
-    type Item = (Range<DateTime<Utc>>, OwnedInterval);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let (range, internal) = self.iter.next()?;
-
-        let interval = OwnedInterval {
-            // only the first occurence of an id should randomize its start
-            randomize_start: match self.seen.insert(internal.id) {
-                true => internal.randomize_start,
-                false => None,
-            },
-            value_map: internal.value_map,
         };
 
         Some((range, interval))
