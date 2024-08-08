@@ -12,6 +12,7 @@ pub use event::*;
 pub use program::*;
 pub use report::*;
 pub use target::*;
+pub use timeline::*;
 
 pub use crate::wire::{
     event::EventContent,

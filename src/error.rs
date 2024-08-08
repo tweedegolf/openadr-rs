@@ -8,6 +8,7 @@ pub enum Error {
     ObjectNotFound,
     DuplicateObject,
     InvalidParentObject,
+    InvalidInterval,
 }
 
 impl From<reqwest::Error> for Error {
@@ -44,6 +45,7 @@ impl std::fmt::Display for Error {
             Error::ObjectNotFound => write!(f, "Object not found"),
             Error::DuplicateObject => write!(f, "Found more than one object matching the filter"),
             Error::InvalidParentObject => write!(f, "Invalid parent object"),
+            Error::InvalidInterval => write!(f, "Invalid interval specified"),
         }
     }
 }
