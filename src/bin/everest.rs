@@ -213,9 +213,12 @@ mod test {
         }
     }
 
+    const HOUR: chrono::TimeDelta = chrono::TimeDelta::hours(1);
+    const MINUTE: chrono::TimeDelta = chrono::TimeDelta::minutes(1);
+
     #[tokio::test(start_paused = true)]
     async fn foobar() {
-        let clock = TestingClock::new("1979-10-12T09:42:00Z".parse().unwrap());
+        let clock = TestingClock::new(chrono::DateTime::UNIX_EPOCH + (HOUR * 9) + (MINUTE * 42));
         let past = tokio::time::Instant::now();
 
         let (input_sender, input_receiver) = tokio::sync::mpsc::channel(1);
@@ -234,10 +237,10 @@ mod test {
         clock.advance(Duration::from_secs(60)).await;
         assert!(output_receiver.is_empty());
 
-        let timeline = create_timeline(vec![
-            ("1979-10-12T09:00:00Z", 42.0),
-            ("1979-10-12T10:00:00Z", 21.0),
-        ]);
+        let event1_ts = chrono::DateTime::UNIX_EPOCH + (HOUR * 9);
+        let event2_ts = chrono::DateTime::UNIX_EPOCH + (HOUR * 10);
+
+        let timeline = create_timeline(vec![(event1_ts, 42.0), (event2_ts, 21.0)]);
         input_sender.send(timeline).await.unwrap();
 
         let output = output_receiver.recv().await.unwrap();
@@ -246,13 +249,13 @@ mod test {
             output.schedule,
             vec![
                 ScheduleResEntry {
-                    timestamp: "1979-10-12T09:00:00Z".parse().unwrap(),
+                    timestamp: event1_ts,
                     limits_to_root: LimitsRes {
                         total_power_w: 42.0
                     }
                 },
                 ScheduleResEntry {
-                    timestamp: "1979-10-12T10:00:00Z".parse().unwrap(),
+                    timestamp: event2_ts,
                     limits_to_root: LimitsRes {
                         total_power_w: 21.0
                     }
@@ -266,7 +269,7 @@ mod test {
         assert_eq!(
             output.schedule,
             vec![ScheduleResEntry {
-                timestamp: "1979-10-12T10:00:00Z".parse().unwrap(),
+                timestamp: event2_ts,
                 limits_to_root: LimitsRes {
                     total_power_w: 21.0
                 }
@@ -274,12 +277,12 @@ mod test {
         );
     }
 
-    fn create_timeline(entries: Vec<(&str, f64)>) -> Timeline {
+    fn create_timeline(entries: Vec<(chrono::DateTime<Utc>, f64)>) -> Timeline {
         let intervals = entries
             .into_iter()
             .map(|(start_time, value)| EventInterval {
                 id: 0,
-                interval_period: Some(IntervalPeriod::new(start_time.parse().unwrap())),
+                interval_period: Some(IntervalPeriod::new(start_time)),
                 payloads: vec![EventValuesMap {
                     value_type: EventType::ImportCapacityLimit,
                     values: vec![Value::Number(value)],
