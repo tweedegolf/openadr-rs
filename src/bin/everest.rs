@@ -97,8 +97,8 @@ async fn update_listener(
 
         let now = clock.now();
 
-        // normally, we expect this to return, but due to e.g. time synchronization, we may wake up
-        // without any interval to actually send upstream.
+        // normally, we expect this to return Some(_), but due to e.g. time synchronization,
+        // we may wake up without any interval to actually send upstream.
         let Some(current) = timeline.at_datetime(&now) else {
             continue;
         };
@@ -114,12 +114,14 @@ async fn update_listener(
 
             valid_until = Ord::max(valid_until, Some(range.end));
 
-            let entry = ScheduleResEntry {
-                timestamp: range.start,
-                limits_to_root: LimitsRes::try_from_event_values(interval.value_map).unwrap(),
-            };
+            if let Some(limits_to_root) = LimitsRes::try_from_event_values(interval.value_map) {
+                let entry = ScheduleResEntry {
+                    timestamp: range.start,
+                    limits_to_root,
+                };
 
-            schedule.push(entry);
+                schedule.push(entry);
+            }
         }
 
         let opt_limits = LimitsRes::try_from_event_values(current.1.value_map);
