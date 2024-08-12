@@ -47,11 +47,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let poll_interval = Duration::from_secs(30);
     tokio::spawn(poll_timeline(program, poll_interval, sender));
 
-    let (output_sender, output_receiver) = tokio::sync::mpsc::channel(1);
+    let (output_sender, mut output_receiver) = tokio::sync::mpsc::channel(1);
     tokio::spawn(update_listener(ChronoClock, receiver, output_sender));
 
-    // TODO actually hook this up
-    std::mem::forget(output_receiver);
+    tokio::spawn(async move {
+        while let Some(enforced_limits) = output_receiver.recv().await {
+            eprintln!("received by mock everest: {:?}", enforced_limits);
+        }
+    });
 
     Ok(())
 }
@@ -217,7 +220,7 @@ mod test {
     const MINUTE: chrono::TimeDelta = chrono::TimeDelta::minutes(1);
 
     #[tokio::test(start_paused = true)]
-    async fn foobar() {
+    async fn test_everest_update() {
         let clock = TestingClock::new(chrono::DateTime::UNIX_EPOCH + (HOUR * 9) + (MINUTE * 42));
         let past = tokio::time::Instant::now();
 
