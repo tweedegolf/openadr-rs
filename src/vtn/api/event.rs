@@ -33,21 +33,18 @@ impl Crud for RwLock<HashMap<EventId, Event>> {
 
     async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
         let event = Event::new(content);
-        self.write()
-            .await
-            .insert(event.id.clone(), event.clone());
+        self.write().await.insert(event.id.clone(), event.clone());
         Ok(event)
     }
 
     async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        self.read()
-            .await
-            .get(id)
-            .cloned()
-            .ok_or(AppError::NotFound)
+        self.read().await.get(id).cloned().ok_or(AppError::NotFound)
     }
 
-    async fn retrieve_all(&self, query_params: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+    async fn retrieve_all(
+        &self,
+        query_params: &Self::Filter,
+    ) -> Result<Vec<Self::Type>, Self::Error> {
         self.read()
             .await
             .values()
@@ -61,7 +58,11 @@ impl Crud for RwLock<HashMap<EventId, Event>> {
             .collect::<Result<Vec<_>, AppError>>()
     }
 
-    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn update(
+        &self,
+        id: &Self::Id,
+        content: Self::NewType,
+    ) -> Result<Self::Type, Self::Error> {
         match self.write().await.get_mut(id) {
             Some(occupied) => {
                 occupied.content = content;
@@ -86,12 +87,15 @@ pub async fn get_all(
 ) -> AppResponse<Vec<Event>> {
     trace!(?query_params);
 
-    let events = event_source.retrieve_all( &query_params).await?;
+    let events = event_source.retrieve_all(&query_params).await?;
 
     Ok(Json(events))
 }
 
-pub async fn get(State(event_source): State<Arc<dyn EventCrud>>, Path(id): Path<EventId>) -> AppResponse<Event> {
+pub async fn get(
+    State(event_source): State<Arc<dyn EventCrud>>,
+    Path(id): Path<EventId>,
+) -> AppResponse<Event> {
     let event = event_source.retrieve(&id).await?;
     Ok(Json(event))
 }
@@ -119,7 +123,10 @@ pub async fn edit(
     Ok(Json(event))
 }
 
-pub async fn delete(State(event_source): State<Arc<dyn EventCrud>>, Path(id): Path<EventId>) -> AppResponse<Event> {
+pub async fn delete(
+    State(event_source): State<Arc<dyn EventCrud>>,
+    Path(id): Path<EventId>,
+) -> AppResponse<Event> {
     let event = event_source.delete(&id).await?;
     info!(%id, "deleted event");
     Ok(Json(event))
@@ -200,11 +207,7 @@ mod test {
         let store = InMemoryStorage::default();
 
         for evt in events {
-            store
-                .events
-                .write()
-                .await
-                .insert(evt.id.clone(), evt);
+            store.events.write().await.insert(evt.id.clone(), evt);
         }
 
         AppState::new(store, JwtManager::from_base64_secret("test").unwrap())

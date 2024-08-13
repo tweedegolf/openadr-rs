@@ -32,21 +32,18 @@ impl Crud for RwLock<HashMap<ReportId, Report>> {
 
     async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
         let event = Report::new(content);
-        self.write()
-            .await
-            .insert(event.id.clone(), event.clone());
+        self.write().await.insert(event.id.clone(), event.clone());
         Ok(event)
     }
 
     async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        self.read()
-            .await
-            .get(id)
-            .cloned()
-            .ok_or(AppError::NotFound)
+        self.read().await.get(id).cloned().ok_or(AppError::NotFound)
     }
 
-    async fn retrieve_all(&self, query_params: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+    async fn retrieve_all(
+        &self,
+        query_params: &Self::Filter,
+    ) -> Result<Vec<Self::Type>, Self::Error> {
         self.read()
             .await
             .values()
@@ -60,7 +57,11 @@ impl Crud for RwLock<HashMap<ReportId, Report>> {
             .collect::<Result<Vec<_>, AppError>>()
     }
 
-    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn update(
+        &self,
+        id: &Self::Id,
+        content: Self::NewType,
+    ) -> Result<Self::Type, Self::Error> {
         match self.write().await.get_mut(id) {
             Some(occupied) => {
                 occupied.content = content;
@@ -79,19 +80,21 @@ impl Crud for RwLock<HashMap<ReportId, Report>> {
     }
 }
 
-
 pub async fn get_all(
     State(report_source): State<Arc<dyn ReportCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Report>> {
     trace!(?query_params);
 
-    let reports = report_source.retrieve_all( &query_params).await?;
+    let reports = report_source.retrieve_all(&query_params).await?;
 
     Ok(Json(reports))
 }
 
-pub async fn get(State(report_source): State<Arc<dyn ReportCrud>>, Path(id): Path<ReportId>) -> AppResponse<Report> {
+pub async fn get(
+    State(report_source): State<Arc<dyn ReportCrud>>,
+    Path(id): Path<ReportId>,
+) -> AppResponse<Report> {
     let report: Report = report_source.retrieve(&id).await?;
     Ok(Json(report))
 }

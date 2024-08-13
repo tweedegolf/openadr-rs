@@ -74,13 +74,7 @@ impl JwtManager {
     /// Decode and validate a given JWT token, returning the validated claims
     pub fn decode_and_validate(&self, token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
         let validation = jsonwebtoken::Validation::default();
-        let token_data = jsonwebtoken::decode::<Claims>(
-            &token,
-            &self.decoding_key,
-            &validation,
-        )?;
+        let token_data = jsonwebtoken::decode::<Claims>(&token, &self.decoding_key, &validation)?;
         Ok(token_data.claims)
     }
 }
-
-

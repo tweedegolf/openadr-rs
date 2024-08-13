@@ -56,11 +56,7 @@ impl Crud for RwLock<HashMap<ProgramId, Program>> {
     }
 
     async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        self.read()
-            .await
-            .get(id)
-            .cloned()
-            .ok_or(AppError::NotFound)
+        self.read().await.get(id).cloned().ok_or(AppError::NotFound)
     }
 
     async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
@@ -77,7 +73,11 @@ impl Crud for RwLock<HashMap<ProgramId, Program>> {
             .collect::<Result<Vec<_>, AppError>>()
     }
 
-    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn update(
+        &self,
+        id: &Self::Id,
+        content: Self::NewType,
+    ) -> Result<Self::Type, Self::Error> {
         if let Some((_, conflict)) =
             self.read().await.iter().find(|(inner_id, p)| {
                 id != *inner_id && p.content.program_name == content.program_name
@@ -120,7 +120,10 @@ pub async fn get_all(
     Ok(Json(programs))
 }
 
-pub async fn get(State(program_source): State<Arc<dyn ProgramCrud>>, Path(id): Path<ProgramId>) -> AppResponse<Program> {
+pub async fn get(
+    State(program_source): State<Arc<dyn ProgramCrud>>,
+    Path(id): Path<ProgramId>,
+) -> AppResponse<Program> {
     let program = program_source.retrieve(&id).await?;
     Ok(Json(program))
 }
