@@ -4,8 +4,13 @@ mod report;
 mod target;
 mod timeline;
 
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
+use tokio::sync::RwLock;
 use url::Url;
 
 pub use event::*;
@@ -28,10 +33,36 @@ pub struct Client {
     client_ref: Arc<ClientRef>,
 }
 
+pub struct ClientCredentials {
+    pub client_id: String,
+    client_secret: String,
+    pub refresh_margin: Duration,
+    pub default_credential_expires_in: Duration,
+}
+
+impl ClientCredentials {
+    pub fn new(client_id: String, client_secret: String) -> Self {
+        Self {
+            client_id,
+            client_secret,
+            refresh_margin: Duration::from_secs(60),
+            default_credential_expires_in: Duration::from_secs(3600),
+        }
+    }
+}
+
+struct AuthToken {
+    token: String,
+    expires_in: Duration,
+    received_at: Instant,
+}
+
 struct ClientRef {
     client: reqwest::Client,
     base_url: url::Url,
     default_page_size: usize,
+    auth_data: Option<ClientCredentials>,
+    auth_token: RwLock<Option<AuthToken>>,
 }
 
 impl std::fmt::Debug for ClientRef {
@@ -43,13 +74,97 @@ impl std::fmt::Debug for ClientRef {
 }
 
 impl ClientRef {
+    /// This ensures the client is authenticated.
+    ///
+    /// We follow the process according to RFC 6749, section 4.4 (client
+    /// credentials grant). The client id and secret are by default sent via
+    /// HTTP Basic Auth.
+    async fn ensure_auth(&self) -> Result<()> {
+        // if there is no auth data we don't do any authentication
+        let Some(auth_data) = &self.auth_data else {
+            return Ok(());
+        };
+
+        // if there is a token and it is valid long enough, we don't have to do anything
+        if let Some(token) = self.auth_token.read().await.as_ref() {
+            if token.received_at.elapsed() < token.expires_in - auth_data.refresh_margin {
+                return Ok(());
+            }
+        }
+
+        #[derive(serde::Serialize)]
+        struct AccessTokenRequest {
+            grant_type: &'static str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            scope: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            client_id: Option<String>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            client_secret: Option<String>,
+        }
+
+        // we should authenticate
+        let auth_url = self.base_url.join("auth/token")?;
+        let request = self.client.post(auth_url).form(&AccessTokenRequest {
+            grant_type: "client_credentials",
+            scope: None,
+            client_id: None,
+            client_secret: None,
+        });
+        let request = request.basic_auth(&auth_data.client_id, Some(&auth_data.client_secret));
+        let request = request.header("Accept", "application/json");
+        let res = request.send().await?;
+        if !res.status().is_success() {
+            let problem = res.json::<crate::wire::oauth::OAuthError>().await?;
+            return Err(crate::Error::AuthProblem(problem));
+        }
+
+        #[derive(Debug, serde::Deserialize)]
+        struct AuthResult {
+            access_token: String,
+            token_type: String,
+            #[serde(default)]
+            expires_in: Option<u64>,
+            // Refresh tokens aren't supported currently
+            // #[serde(default)]
+            // refresh_token: Option<String>,
+            #[serde(default)]
+            scope: Option<String>,
+            #[serde(flatten)]
+            other: HashMap<String, serde_json::Value>,
+        }
+
+        let auth_result = res.json::<AuthResult>().await?;
+        let token = AuthToken {
+            token: auth_result.access_token,
+            expires_in: auth_result
+                .expires_in
+                .map(|d| Duration::from_secs(d))
+                .unwrap_or(auth_data.default_credential_expires_in),
+            received_at: Instant::now(),
+        };
+
+        *self.auth_token.write().await = Some(token);
+        Ok(())
+    }
+
     async fn request<T: serde::de::DeserializeOwned>(
+        &self,
         mut request: reqwest::RequestBuilder,
         query: &[(&str, &str)],
     ) -> Result<T> {
+        self.ensure_auth().await?;
         request = request.header("Accept", "application/json");
         if !query.is_empty() {
             request = request.query(&query);
+        }
+
+        // read token and insert in request if available
+        {
+            let token = self.auth_token.read().await;
+            if let Some(token) = token.as_ref() {
+                request = request.bearer_auth(&token.token);
+            }
         }
         let res = request.send().await?;
 
@@ -69,7 +184,7 @@ impl ClientRef {
     ) -> Result<T> {
         let url = self.base_url.join(path)?;
         let request = self.client.get(url);
-        ClientRef::request(request, query).await
+        self.request(request, query).await
     }
 
     pub async fn post<S: serde::ser::Serialize, T: serde::de::DeserializeOwned>(
@@ -80,7 +195,7 @@ impl ClientRef {
     ) -> Result<T> {
         let url = self.base_url.join(path)?;
         let request = self.client.post(url).json(body);
-        ClientRef::request(request, query).await
+        self.request(request, query).await
     }
 
     pub async fn put<S: serde::ser::Serialize, T: serde::de::DeserializeOwned>(
@@ -91,31 +206,37 @@ impl ClientRef {
     ) -> Result<T> {
         let url = self.base_url.join(path)?;
         let request = self.client.put(url).json(body);
-        ClientRef::request(request, query).await
+        self.request(request, query).await
     }
 
     pub async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()> {
         let url = self.base_url.join(path)?;
         let request = self.client.delete(url);
-        ClientRef::request(request, query).await
+        self.request(request, query).await
     }
 }
 
 impl Client {
     /// Create a new client for a VTN located at the specified URL
-    pub fn new(base_url: Url) -> Client {
+    pub fn new(base_url: Url, auth: Option<ClientCredentials>) -> Client {
         let client = reqwest::Client::new();
-        Self::with_reqwest(base_url, client)
+        Self::with_reqwest(base_url, client, auth)
     }
 
     /// Create a new client, but use the specific reqwest client instead of
     /// the default one. This allows you to configure proxy settings, timeouts, etc.
-    pub fn with_reqwest(base_url: Url, client: reqwest::Client) -> Client {
+    pub fn with_reqwest(
+        base_url: Url,
+        client: reqwest::Client,
+        auth: Option<ClientCredentials>,
+    ) -> Client {
         Client {
             client_ref: Arc::new(ClientRef {
                 client,
                 base_url,
                 default_page_size: 50,
+                auth_data: auth,
+                auth_token: RwLock::new(None),
             }),
         }
     }

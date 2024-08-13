@@ -1,19 +1,25 @@
-use openadr::Target;
+use openadr::{ClientCredentials, ProgramContent, Target};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = openadr::Client::new("http://localhost:3000/".try_into()?);
-    // let created_program = client.create_program(ProgramContent::new("name")).await?;
+    let client = openadr::Client::new(
+        "http://localhost:3000/".try_into()?,
+        Some(ClientCredentials::new(
+            "admin".to_string(),
+            "admin".to_string(),
+        )),
+    );
+    let created_program = client.create_program(ProgramContent::new("name")).await?;
     // let created_program_1 = client.create_program(ProgramContent::new("name1")).await?;
     let program = client.get_program(Target::Program("name")).await?;
     // let created_event = program
     //     .create_event(program.new_event().with_event_name("prices3").with_priority(0))
     //     .await?;
     let events = program.get_all_events().await?;
-    let reports = events[0].get_all_reports().await?;
+    // let reports = events[0].get_all_reports().await?;
     // let event = program.get_event(Target::Event("prices3")).await?;
     dbg!(events);
-    dbg!(reports);
+    // dbg!(reports);
 
     // let programs: Vec<Program> = client.get_all_programs()?;
     // let programs = client.get_programs(TargetLabel::ProgramName, &["name"])?;

@@ -5,6 +5,7 @@ pub enum Error {
     Serde(serde_json::Error),
     UrlParseError(url::ParseError),
     Problem(crate::wire::Problem),
+    AuthProblem(crate::wire::oauth::OAuthError),
     ObjectNotFound,
     DuplicateObject,
     InvalidParentObject,
@@ -35,6 +36,12 @@ impl From<crate::wire::Problem> for Error {
     }
 }
 
+impl From<crate::wire::oauth::OAuthError> for Error {
+    fn from(err: crate::wire::oauth::OAuthError) -> Self {
+        Error::AuthProblem(err)
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -42,6 +49,7 @@ impl std::fmt::Display for Error {
             Error::Serde(err) => write!(f, "Serde error: {}", err),
             Error::UrlParseError(err) => write!(f, "URL parse error: {}", err),
             Error::Problem(err) => write!(f, "OpenADR Problem: {:?}", err),
+            Error::AuthProblem(err) => write!(f, "Authentication problem: {:?}", err),
             Error::ObjectNotFound => write!(f, "Object not found"),
             Error::DuplicateObject => write!(f, "Found more than one object matching the filter"),
             Error::InvalidParentObject => write!(f, "Invalid parent object"),

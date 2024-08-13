@@ -1,8 +1,12 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use axum::extract::{Path, State};
-use axum::Json;
+use axum::{async_trait, debug_handler, Json};
 use chrono::Utc;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use tokio::sync::RwLock;
 use tracing::{info, trace, warn};
 use validator::Validate;
 
@@ -11,19 +15,21 @@ use openadr::wire::target::TargetLabel;
 use openadr::wire::Program;
 
 use crate::api::{AppResponse, ValidatedQuery};
-use crate::data_source::Crud;
+use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
-use crate::state::AppState;
 
-impl Crud<Program> for AppState {
+impl ProgramCrud for RwLock<HashMap<ProgramId, Program>> {}
+
+#[async_trait]
+impl Crud for RwLock<HashMap<ProgramId, Program>> {
+    type Type = Program;
     type Id = ProgramId;
     type NewType = ProgramContent;
     type Error = AppError;
     type Filter = QueryParams;
 
-    async fn create(&self, new: Self::NewType) -> Result<Program, Self::Error> {
+    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error> {
         if let Some(conflict) = self
-            .programs
             .read()
             .await
             .values()
@@ -37,8 +43,7 @@ impl Crud<Program> for AppState {
         }
 
         let program = Program::new(new);
-        self.programs
-            .write()
+        self.write()
             .await
             .insert(program.id.clone(), program.clone());
 
@@ -50,18 +55,16 @@ impl Crud<Program> for AppState {
         Ok(program)
     }
 
-    async fn retrieve(&self, id: &Self::Id) -> Result<Program, Self::Error> {
-        self.programs
-            .read()
+    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+        self.read()
             .await
             .get(id)
             .cloned()
             .ok_or(AppError::NotFound)
     }
 
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Program>, Self::Error> {
-        self.programs
-            .read()
+    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+        self.read()
             .await
             .values()
             .filter_map(|program| match filter.matches(program) {
@@ -74,9 +77,9 @@ impl Crud<Program> for AppState {
             .collect::<Result<Vec<_>, AppError>>()
     }
 
-    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Program, Self::Error> {
+    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Self::Type, Self::Error> {
         if let Some((_, conflict)) =
-            self.programs.read().await.iter().find(|(inner_id, p)| {
+            self.read().await.iter().find(|(inner_id, p)| {
                 id != *inner_id && p.content.program_name == content.program_name
             })
         {
@@ -87,7 +90,7 @@ impl Crud<Program> for AppState {
             )));
         }
 
-        match self.programs.write().await.get_mut(id) {
+        match self.write().await.get_mut(id) {
             Some(occupied) => {
                 occupied.content = content;
                 occupied.modification_date_time = Utc::now();
@@ -97,45 +100,46 @@ impl Crud<Program> for AppState {
         }
     }
 
-    async fn delete(&self, id: &Self::Id) -> Result<Program, Self::Error> {
-        match self.programs.write().await.remove(id) {
+    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+        match self.write().await.remove(id) {
             Some(program) => Ok(program),
             None => Err(AppError::NotFound),
         }
     }
 }
 
+#[debug_handler]
 pub async fn get_all(
-    State(state): State<AppState>,
+    State(program_source): State<Arc<dyn ProgramCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Program>> {
     trace!(?query_params);
 
-    let programs = <AppState as Crud<Program>>::retrieve_all(&state, &query_params).await?;
+    let programs = program_source.retrieve_all(&query_params).await?;
 
     Ok(Json(programs))
 }
 
-pub async fn get(State(state): State<AppState>, Path(id): Path<ProgramId>) -> AppResponse<Program> {
-    let program = <AppState as Crud<Program>>::retrieve(&state, &id).await?;
+pub async fn get(State(program_source): State<Arc<dyn ProgramCrud>>, Path(id): Path<ProgramId>) -> AppResponse<Program> {
+    let program = program_source.retrieve(&id).await?;
     Ok(Json(program))
 }
 
 pub async fn add(
-    State(state): State<AppState>,
+    State(program_source): State<Arc<dyn ProgramCrud>>,
     Json(new_program): Json<ProgramContent>,
 ) -> Result<(StatusCode, Json<Program>), AppError> {
-    let program = <AppState as Crud<Program>>::create(&state, new_program).await?;
+    let program = program_source.create(new_program).await?;
 
     Ok((StatusCode::CREATED, Json(program)))
 }
 
 pub async fn edit(
-    State(state): State<AppState>,
+    State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
     Json(content): Json<ProgramContent>,
 ) -> AppResponse<Program> {
-    let program = <AppState as Crud<Program>>::update(&state, &id, content).await?;
+    let program = program_source.update(&id, content).await?;
 
     info!(%program.id, program.program_name=program.content.program_name, "program updated");
 
@@ -143,10 +147,10 @@ pub async fn edit(
 }
 
 pub async fn delete(
-    State(state): State<AppState>,
+    State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
 ) -> AppResponse<Program> {
-    let program = <AppState as Crud<Program>>::delete(&state, &id).await?;
+    let program = program_source.delete(&id).await?;
     info!(%id, "deleted program");
     Ok(Json(program))
 }
@@ -191,6 +195,8 @@ impl QueryParams {
 
 #[cfg(test)]
 mod test {
+    use crate::{data_source::InMemoryStorage, jwt::JwtManager, state::AppState};
+
     use super::*;
     use axum::{
         body::Body,
@@ -230,17 +236,17 @@ mod test {
     }
 
     async fn state_with_programs(programs: Vec<Program>) -> AppState {
-        let state = AppState::default();
+        let store = InMemoryStorage::default();
 
         for program in programs {
-            state
+            store
                 .programs
                 .write()
                 .await
                 .insert(program.id.clone(), program);
         }
 
-        state
+        AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
     }
 
     #[tokio::test]
