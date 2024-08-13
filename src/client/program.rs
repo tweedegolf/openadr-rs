@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    client::ClientRef,
     wire::{
         event::{EventObjectType, Priority},
         target::TargetLabel,
@@ -9,18 +10,18 @@ use crate::{
     Error, EventClient, EventContent, ProgramContent, ProgramId, Result, Target, Timeline,
 };
 
-use super::ClientRef;
+use super::ReqwestClientRef;
 
 /// A client for interacting with the data in a specific program and the events
 /// contained in the program.
 #[derive(Debug)]
 pub struct ProgramClient {
-    client: Arc<ClientRef>,
+    client: Arc<ReqwestClientRef>,
     data: Program,
 }
 
 impl ProgramClient {
-    pub(super) fn from_program(client: Arc<ClientRef>, program: Program) -> ProgramClient {
+    pub(super) fn from_program(client: Arc<ReqwestClientRef>, program: Program) -> ProgramClient {
         ProgramClient {
             client,
             data: program,

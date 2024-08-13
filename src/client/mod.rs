@@ -29,7 +29,7 @@ use crate::Result;
 ///
 /// Can be used to implement both, the VEN and the business logic
 pub struct Client {
-    client_ref: Arc<ClientRef>,
+    client_ref: Arc<ReqwestClientRef>,
 }
 
 pub struct ClientCredentials {
@@ -56,7 +56,7 @@ struct AuthToken {
     since: Instant,
 }
 
-struct ClientRef {
+struct ReqwestClientRef {
     client: reqwest::Client,
     base_url: url::Url,
     default_page_size: usize,
@@ -64,7 +64,7 @@ struct ClientRef {
     auth_token: RwLock<Option<AuthToken>>,
 }
 
-impl std::fmt::Debug for ClientRef {
+impl std::fmt::Debug for ReqwestClientRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("ClientRef")
             .field(&self.base_url.to_string())
@@ -72,7 +72,7 @@ impl std::fmt::Debug for ClientRef {
     }
 }
 
-impl ClientRef {
+impl ReqwestClientRef {
     /// This ensures the client is authenticated.
     ///
     /// We follow the process according to RFC 6749, section 4.4 (client
@@ -150,7 +150,30 @@ impl ClientRef {
         *self.auth_token.write().await = Some(token);
         Ok(())
     }
+}
 
+#[async_trait::async_trait]
+pub(crate) trait ClientRef {
+    async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> Result<T>;
+
+    async fn post<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
+    where
+        S: serde::ser::Serialize + Sync,
+        T: serde::de::DeserializeOwned;
+
+    async fn put<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
+    where
+        S: serde::ser::Serialize + Sync,
+        T: serde::de::DeserializeOwned;
+
+    async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()>;
+}
+
+impl ReqwestClientRef {
     async fn request<T: serde::de::DeserializeOwned>(
         &self,
         mut request: reqwest::RequestBuilder,
@@ -179,8 +202,11 @@ impl ClientRef {
 
         Ok(res.json().await?)
     }
+}
 
-    pub async fn get<T: serde::de::DeserializeOwned>(
+#[async_trait::async_trait]
+impl ClientRef for ReqwestClientRef {
+    async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, &str)],
@@ -190,29 +216,27 @@ impl ClientRef {
         self.request(request, query).await
     }
 
-    pub async fn post<S: serde::ser::Serialize, T: serde::de::DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &S,
-        query: &[(&str, &str)],
-    ) -> Result<T> {
+    async fn post<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
+    where
+        S: serde::ser::Serialize + Sync,
+        T: serde::de::DeserializeOwned,
+    {
         let url = self.base_url.join(path)?;
         let request = self.client.post(url).json(body);
         self.request(request, query).await
     }
 
-    pub async fn put<S: serde::ser::Serialize, T: serde::de::DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &S,
-        query: &[(&str, &str)],
-    ) -> Result<T> {
+    async fn put<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
+    where
+        S: serde::ser::Serialize + Sync,
+        T: serde::de::DeserializeOwned,
+    {
         let url = self.base_url.join(path)?;
         let request = self.client.put(url).json(body);
         self.request(request, query).await
     }
 
-    pub async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()> {
+    async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()> {
         let url = self.base_url.join(path)?;
         let request = self.client.delete(url);
         self.request(request, query).await
@@ -234,7 +258,7 @@ impl Client {
         auth: Option<ClientCredentials>,
     ) -> Client {
         Client {
-            client_ref: Arc::new(ClientRef {
+            client_ref: Arc::new(ReqwestClientRef {
                 client,
                 base_url,
                 default_page_size: 50,

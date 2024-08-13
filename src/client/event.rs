@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    client::ClientRef,
     wire::{
         report::{ReportContent, ReportObjectType},
         Event, Report,
@@ -8,16 +9,16 @@ use crate::{
     EventContent, ReportClient, Result,
 };
 
-use super::ClientRef;
+use super::ReqwestClientRef;
 
 #[derive(Debug)]
 pub struct EventClient {
-    client: Arc<ClientRef>,
+    client: Arc<ReqwestClientRef>,
     data: Event,
 }
 
 impl EventClient {
-    pub(super) fn from_event(client: Arc<ClientRef>, event: Event) -> EventClient {
+    pub(super) fn from_event(client: Arc<ReqwestClientRef>, event: Event) -> EventClient {
         EventClient {
             client,
             data: event,

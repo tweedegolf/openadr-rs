@@ -1,20 +1,21 @@
 use std::sync::Arc;
 
 use crate::{
+    client::ClientRef,
     wire::{report::ReportContent, Report},
     Result,
 };
 
-use super::ClientRef;
+use super::ReqwestClientRef;
 
 #[derive(Debug)]
 pub struct ReportClient {
-    client: Arc<ClientRef>,
+    client: Arc<ReqwestClientRef>,
     data: Report,
 }
 
 impl ReportClient {
-    pub(super) fn from_report(client: Arc<ClientRef>, report: Report) -> ReportClient {
+    pub(super) fn from_report(client: Arc<ReqwestClientRef>, report: Report) -> ReportClient {
         ReportClient {
             client,
             data: report,
