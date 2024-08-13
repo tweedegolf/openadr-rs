@@ -22,6 +22,8 @@ pub enum AppError {
     NotImplemented(&'static str),
     #[error("Conflict: {0}")]
     Conflict(String),
+    #[error("Authentication error: {0}")]
+    Auth(String),
 }
 
 impl IntoResponse for AppError {
@@ -111,6 +113,20 @@ impl IntoResponse for AppError {
                     r#type: Default::default(),
                     title: Some(StatusCode::CONFLICT.to_string()),
                     status: StatusCode::CONFLICT,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::Auth(err) => {
+                trace!(
+                    "Error reference: {}, Authentication error: {}",
+                    reference,
+                    err
+                );
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::UNAUTHORIZED.to_string()),
+                    status: StatusCode::UNAUTHORIZED,
                     detail: Some(err.to_string()),
                     instance: Some(reference.to_string()),
                 }

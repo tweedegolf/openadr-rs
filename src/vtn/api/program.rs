@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::{async_trait, debug_handler, Json};
+use axum::{async_trait, Json};
 use chrono::Utc;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -17,6 +17,7 @@ use openadr::wire::Program;
 use crate::api::{AppResponse, ValidatedQuery};
 use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
+use crate::jwt::{BLUser, User};
 
 impl ProgramCrud for RwLock<HashMap<ProgramId, Program>> {}
 
@@ -108,10 +109,10 @@ impl Crud for RwLock<HashMap<ProgramId, Program>> {
     }
 }
 
-#[debug_handler]
 pub async fn get_all(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
+    User(_user): User,
 ) -> AppResponse<Vec<Program>> {
     trace!(?query_params);
 
@@ -123,6 +124,7 @@ pub async fn get_all(
 pub async fn get(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
+    User(_user): User,
 ) -> AppResponse<Program> {
     let program = program_source.retrieve(&id).await?;
     Ok(Json(program))
@@ -130,6 +132,7 @@ pub async fn get(
 
 pub async fn add(
     State(program_source): State<Arc<dyn ProgramCrud>>,
+    BLUser(_user): BLUser,
     Json(new_program): Json<ProgramContent>,
 ) -> Result<(StatusCode, Json<Program>), AppError> {
     let program = program_source.create(new_program).await?;
@@ -140,6 +143,7 @@ pub async fn add(
 pub async fn edit(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
+    BLUser(_user): BLUser,
     Json(content): Json<ProgramContent>,
 ) -> AppResponse<Program> {
     let program = program_source.update(&id, content).await?;
@@ -152,6 +156,7 @@ pub async fn edit(
 pub async fn delete(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
+    BLUser(_user): BLUser,
 ) -> AppResponse<Program> {
     let program = program_source.delete(&id).await?;
     info!(%id, "deleted program");

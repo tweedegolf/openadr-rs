@@ -20,6 +20,7 @@ use crate::api::{AppResponse, ValidatedQuery};
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
 use crate::error::AppError::NotImplemented;
+use crate::jwt::{BLUser, User};
 
 impl EventCrud for RwLock<HashMap<EventId, Event>> {}
 
@@ -84,6 +85,7 @@ impl Crud for RwLock<HashMap<EventId, Event>> {
 pub async fn get_all(
     State(event_source): State<Arc<dyn EventCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
+    User(_user): User,
 ) -> AppResponse<Vec<Event>> {
     trace!(?query_params);
 
@@ -95,6 +97,7 @@ pub async fn get_all(
 pub async fn get(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
+    User(_user): User,
 ) -> AppResponse<Event> {
     let event = event_source.retrieve(&id).await?;
     Ok(Json(event))
@@ -102,6 +105,7 @@ pub async fn get(
 
 pub async fn add(
     State(event_source): State<Arc<dyn EventCrud>>,
+    BLUser(_user): BLUser,
     Json(new_event): Json<EventContent>,
 ) -> Result<(StatusCode, Json<Event>), AppError> {
     let event = event_source.create(new_event).await?;
@@ -114,6 +118,7 @@ pub async fn add(
 pub async fn edit(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
+    BLUser(_user): BLUser,
     Json(content): Json<EventContent>,
 ) -> AppResponse<Event> {
     let event = event_source.update(&id, content).await?;
@@ -126,6 +131,7 @@ pub async fn edit(
 pub async fn delete(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
+    BLUser(_user): BLUser,
 ) -> AppResponse<Event> {
     let event = event_source.delete(&id).await?;
     info!(%id, "deleted event");
