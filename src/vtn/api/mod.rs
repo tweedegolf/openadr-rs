@@ -6,6 +6,7 @@ use axum_extra::extract::{Query, QueryRejection};
 use serde::de::DeserializeOwned;
 use validator::Validate;
 
+pub mod auth;
 pub mod event;
 pub mod program;
 pub mod report;

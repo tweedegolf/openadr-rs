@@ -1,12 +1,14 @@
-use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
+use axum::{async_trait, Json};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use tracing::{info, trace, warn};
+use tokio::sync::RwLock;
+use tracing::{info, trace};
 use validator::Validate;
 
 use openadr::wire::event::EventId;
@@ -15,37 +17,83 @@ use openadr::wire::report::{ReportContent, ReportId};
 use openadr::wire::Report;
 
 use crate::api::{AppResponse, ValidatedQuery};
+use crate::data_source::{Crud, ReportCrud};
 use crate::error::AppError;
-use crate::error::AppError::NotFound;
-use crate::state::AppState;
+
+impl ReportCrud for RwLock<HashMap<ReportId, Report>> {}
+
+#[async_trait]
+impl Crud for RwLock<HashMap<ReportId, Report>> {
+    type Type = Report;
+    type Id = ReportId;
+    type NewType = ReportContent;
+    type Error = AppError;
+    type Filter = QueryParams;
+
+    async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
+        let event = Report::new(content);
+        self.write()
+            .await
+            .insert(event.id.clone(), event.clone());
+        Ok(event)
+    }
+
+    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+        self.read()
+            .await
+            .get(id)
+            .cloned()
+            .ok_or(AppError::NotFound)
+    }
+
+    async fn retrieve_all(&self, query_params: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+        self.read()
+            .await
+            .values()
+            .filter_map(|event| match query_params.matches(event) {
+                Ok(true) => Some(Ok(event.clone())),
+                Ok(false) => None,
+                Err(err) => Some(Err(err)),
+            })
+            .skip(query_params.skip as usize)
+            .take(query_params.limit as usize)
+            .collect::<Result<Vec<_>, AppError>>()
+    }
+
+    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Self::Type, Self::Error> {
+        match self.write().await.get_mut(id) {
+            Some(occupied) => {
+                occupied.content = content;
+                occupied.modification_date_time = Utc::now();
+                Ok(occupied.clone())
+            }
+            None => Err(AppError::NotFound),
+        }
+    }
+
+    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+        match self.write().await.remove(id) {
+            Some(event) => Ok(event),
+            None => Err(AppError::NotFound),
+        }
+    }
+}
+
 
 pub async fn get_all(
-    State(state): State<AppState>,
+    State(report_source): State<Arc<dyn ReportCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Report>> {
     trace!(?query_params);
 
-    let reports = state
-        .reports
-        .read()
-        .await
-        .values()
-        .filter_map(|report| match query_params.matches(report) {
-            Ok(true) => Some(Ok(report.clone())),
-            Ok(false) => None,
-            Err(err) => Some(Err(err)),
-        })
-        .skip(query_params.skip as usize)
-        .take(query_params.limit as usize)
-        .collect::<Result<Vec<_>, AppError>>()?;
+    let reports = report_source.retrieve_all( &query_params).await?;
 
     Ok(Json(reports))
 }
 
-pub async fn get(State(state): State<AppState>, Path(id): Path<ReportId>) -> AppResponse<Report> {
-    Ok(Json(
-        state.reports.read().await.get(&id).ok_or(NotFound)?.clone(),
-    ))
+pub async fn get(State(report_source): State<Arc<dyn ReportCrud>>, Path(id): Path<ReportId>) -> AppResponse<Report> {
+    let report: Report = report_source.retrieve(&id).await?;
+    Ok(Json(report))
 }
 
 // TODO
@@ -56,88 +104,35 @@ pub async fn get(State(state): State<AppState>, Path(id): Path<ReportId>) -> App
 //        schema:
 //        $ref: '#/components/schemas/problem'
 pub async fn add(
-    State(state): State<AppState>,
+    State(report_source): State<Arc<dyn ReportCrud>>,
     Json(new_report): Json<ReportContent>,
 ) -> Result<(StatusCode, Json<Report>), AppError> {
-    let mut map = state.reports.write().await;
+    let report = report_source.create(new_report).await?;
 
-    if let Some(new_report_name) = &new_report.report_name {
-        if let Some((name, id)) = map
-            .iter()
-            .filter_map(|(_, p)| {
-                p.content
-                    .report_name
-                    .clone()
-                    .map(|name| (name, p.id.clone()))
-            })
-            .find(|(name, _)| name == new_report_name)
-        {
-            warn!(id=%id, report_name=%name, "Conflicting report_name");
-            return Err(AppError::Conflict(format!(
-                "Report with id {} has the same name",
-                id
-            )));
-        }
-    }
-
-    let report = Report::new(new_report);
-    map.insert(report.id.clone(), report.clone());
-
-    info!(%report.id,
-        report_name=?report.content.report_name,
-        "report created"
-    );
+    info!(%report.id, report_name=?report.content.report_name, "report created");
 
     Ok((StatusCode::CREATED, Json(report)))
 }
 
 pub async fn edit(
-    State(state): State<AppState>,
+    State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
     Json(content): Json<ReportContent>,
 ) -> AppResponse<Report> {
-    let mut map = state.reports.write().await;
+    let report = report_source.update(&id, content).await?;
 
-    if let Some((_, conflict)) = map.iter().find(|(inner_id, p)| {
-        id != **inner_id
-            && content.report_name.is_some()
-            && p.content.report_name == content.report_name
-    }) {
-        warn!(updated=%id, conflicting=%conflict.id, report_name=?content.report_name, "Conflicting report_name");
-        return Err(AppError::Conflict(format!(
-            "Report with id {} has the same name",
-            conflict.id
-        )));
-    }
+    info!(%report.id, report_name=?report.content.report_name, "report updated");
 
-    match map.entry(id) {
-        Entry::Occupied(mut entry) => {
-            let r = entry.get_mut();
-            r.content = content;
-            r.modification_date_time = Utc::now();
-
-            info!(%r.id,
-                report_name=?r.content.report_name,
-                "report updated"
-            );
-
-            Ok(Json(r.clone()))
-        }
-        Entry::Vacant(_) => Err(NotFound),
-    }
+    Ok(Json(report))
 }
 
 pub async fn delete(
-    State(state): State<AppState>,
+    State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
 ) -> AppResponse<Report> {
-    match state.reports.write().await.remove(&id) {
-        None => Err(NotFound),
-        Some(removed) => {
-            info!(%id, "delete report");
-            Ok(Json(removed))
-        }
-    }
+    let report = report_source.delete(&id).await?;
+    info!(%id, "deleted report");
+    Ok(Json(report))
 }
 
 #[derive(Serialize, Deserialize, Validate, Debug)]

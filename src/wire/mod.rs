@@ -21,6 +21,7 @@ pub mod program;
 pub mod report;
 pub mod target;
 pub mod values_map;
+pub mod oauth;
 
 mod serde_rfc3339 {
     use super::*;

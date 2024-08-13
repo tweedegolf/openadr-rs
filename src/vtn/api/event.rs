@@ -1,8 +1,12 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
+use axum::{async_trait, Json};
 use chrono::Utc;
 use serde::Deserialize;
+use tokio::sync::RwLock;
 use tracing::{info, trace};
 use validator::Validate;
 
@@ -13,38 +17,38 @@ use openadr::wire::target::TargetLabel;
 use openadr::wire::Event;
 
 use crate::api::{AppResponse, ValidatedQuery};
-use crate::data_source::Crud;
+use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
-use crate::error::AppError::{NotFound, NotImplemented};
-use crate::state::AppState;
+use crate::error::AppError::NotImplemented;
 
-impl Crud<Event> for AppState {
+impl EventCrud for RwLock<HashMap<EventId, Event>> {}
+
+#[async_trait]
+impl Crud for RwLock<HashMap<EventId, Event>> {
+    type Type = Event;
     type Id = EventId;
     type NewType = EventContent;
     type Error = AppError;
     type Filter = QueryParams;
 
-    async fn create(&self, content: Self::NewType) -> Result<Event, Self::Error> {
+    async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
         let event = Event::new(content);
-        self.events
-            .write()
+        self.write()
             .await
             .insert(event.id.clone(), event.clone());
         Ok(event)
     }
 
-    async fn retrieve(&self, id: &Self::Id) -> Result<Event, Self::Error> {
-        self.events
-            .read()
+    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+        self.read()
             .await
             .get(id)
             .cloned()
             .ok_or(AppError::NotFound)
     }
 
-    async fn retrieve_all(&self, query_params: &Self::Filter) -> Result<Vec<Event>, Self::Error> {
-        self.events
-            .read()
+    async fn retrieve_all(&self, query_params: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+        self.read()
             .await
             .values()
             .filter_map(|event| match query_params.matches(event) {
@@ -57,8 +61,8 @@ impl Crud<Event> for AppState {
             .collect::<Result<Vec<_>, AppError>>()
     }
 
-    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Event, Self::Error> {
-        match self.events.write().await.get_mut(id) {
+    async fn update(&self, id: &Self::Id, content: Self::NewType) -> Result<Self::Type, Self::Error> {
+        match self.write().await.get_mut(id) {
             Some(occupied) => {
                 occupied.content = content;
                 occupied.modification_date_time = Utc::now();
@@ -68,8 +72,8 @@ impl Crud<Event> for AppState {
         }
     }
 
-    async fn delete(&self, id: &Self::Id) -> Result<Event, Self::Error> {
-        match self.events.write().await.remove(id) {
+    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+        match self.write().await.remove(id) {
             Some(event) => Ok(event),
             None => Err(AppError::NotFound),
         }
@@ -77,26 +81,26 @@ impl Crud<Event> for AppState {
 }
 
 pub async fn get_all(
-    State(state): State<AppState>,
+    State(event_source): State<Arc<dyn EventCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
 ) -> AppResponse<Vec<Event>> {
     trace!(?query_params);
 
-    let events = <AppState as Crud<Event>>::retrieve_all(&state, &query_params).await?;
+    let events = event_source.retrieve_all( &query_params).await?;
 
     Ok(Json(events))
 }
 
-pub async fn get(State(state): State<AppState>, Path(id): Path<EventId>) -> AppResponse<Event> {
-    let event = <AppState as Crud<Event>>::retrieve(&state, &id).await?;
+pub async fn get(State(event_source): State<Arc<dyn EventCrud>>, Path(id): Path<EventId>) -> AppResponse<Event> {
+    let event = event_source.retrieve(&id).await?;
     Ok(Json(event))
 }
 
 pub async fn add(
-    State(state): State<AppState>,
+    State(event_source): State<Arc<dyn EventCrud>>,
     Json(new_event): Json<EventContent>,
 ) -> Result<(StatusCode, Json<Event>), AppError> {
-    let event = <AppState as Crud<Event>>::create(&state, new_event).await?;
+    let event = event_source.create(new_event).await?;
 
     info!(%event.id, event_name=?event.content.event_name, "event created");
 
@@ -104,25 +108,21 @@ pub async fn add(
 }
 
 pub async fn edit(
-    State(state): State<AppState>,
+    State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
     Json(content): Json<EventContent>,
 ) -> AppResponse<Event> {
-    let event = <AppState as Crud<Event>>::update(&state, &id, content).await?;
+    let event = event_source.update(&id, content).await?;
 
     info!(%event.id, event_name=?event.content.event_name, "event updated");
 
     Ok(Json(event))
 }
 
-pub async fn delete(State(state): State<AppState>, Path(id): Path<EventId>) -> AppResponse<Event> {
-    match state.events.write().await.remove(&id) {
-        None => Err(NotFound),
-        Some(removed) => {
-            info!(%id, "event deleted");
-            Ok(Json(removed))
-        }
-    }
+pub async fn delete(State(event_source): State<Arc<dyn EventCrud>>, Path(id): Path<EventId>) -> AppResponse<Event> {
+    let event = event_source.delete(&id).await?;
+    info!(%id, "deleted event");
+    Ok(Json(event))
 }
 
 #[derive(Deserialize, Validate, Debug)]
@@ -160,6 +160,8 @@ impl QueryParams {
 
 #[cfg(test)]
 mod test {
+    use crate::{data_source::InMemoryStorage, jwt::JwtManager, state::AppState};
+
     use super::*;
     use axum::{
         body::Body,
@@ -195,17 +197,17 @@ mod test {
     }
 
     async fn state_with_events(events: Vec<Event>) -> AppState {
-        let state = AppState::default();
+        let store = InMemoryStorage::default();
 
-        for program in events {
-            state
+        for evt in events {
+            store
                 .events
                 .write()
                 .await
-                .insert(program.id.clone(), program);
+                .insert(evt.id.clone(), evt);
         }
 
-        state
+        AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
     }
 
     #[tokio::test]

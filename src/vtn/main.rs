@@ -1,5 +1,7 @@
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
+use data_source::{AuthInfo, InMemoryStorage};
+use jwt::{AuthRole, JwtManager};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tower_http::trace::TraceLayer;
@@ -8,15 +10,16 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
-use api::event;
 use api::program;
 use api::report;
+use api::{auth, event};
 
 use crate::state::AppState;
 
 mod api;
 mod data_source;
 mod error;
+mod jwt;
 mod state;
 
 #[tokio::main]
@@ -30,7 +33,14 @@ async fn main() {
     let listener = TcpListener::bind(addr).await.unwrap();
     info!("listening on http://{}", listener.local_addr().unwrap());
 
-    let state = AppState::default();
+    let storage = InMemoryStorage::default();
+    storage.auth.write().await.push(AuthInfo {
+        client_id: "admin".to_string(),
+        client_secret: "admin".to_string(),
+        role: AuthRole::BL,
+        ven: None,
+    });
+    let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());
 
     if let Err(e) = axum::serve(listener, app_with_state(state))
         .with_graceful_shutdown(shutdown_signal())
@@ -57,6 +67,8 @@ pub(crate) fn app_with_state(state: AppState) -> Router {
             "/events/:id",
             get(event::get).put(event::edit).delete(event::delete),
         )
+        .route("/auth/register", post(auth::register))
+        .route("/auth/token", post(auth::token))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
