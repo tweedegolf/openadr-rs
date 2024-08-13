@@ -1,7 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use axum::async_trait;
-use openadr::{wire::{event::EventId, report::{ReportContent, ReportId}, Event, Program, Report}, EventContent, ProgramContent, ProgramId};
+use openadr::{
+    wire::{
+        event::EventId,
+        report::{ReportContent, ReportId},
+        Event, Program, Report,
+    },
+    EventContent, ProgramContent, ProgramId,
+};
 use thiserror::Error;
 use tokio::sync::RwLock;
 
@@ -22,9 +29,36 @@ pub trait Crud: Send + Sync + 'static {
     async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error>;
 }
 
-pub trait ProgramCrud: Crud<Type = Program, Id = ProgramId, NewType = ProgramContent, Error = AppError, Filter = crate::api::program::QueryParams> {}
-pub trait ReportCrud: Crud<Type = Report, Id = ReportId, NewType = ReportContent, Error = AppError, Filter = crate::api::report::QueryParams> {}
-pub trait EventCrud: Crud<Type = Event, Id = EventId, NewType = EventContent, Error = AppError, Filter = crate::api::event::QueryParams> {}
+pub trait ProgramCrud:
+    Crud<
+    Type = Program,
+    Id = ProgramId,
+    NewType = ProgramContent,
+    Error = AppError,
+    Filter = crate::api::program::QueryParams,
+>
+{
+}
+pub trait ReportCrud:
+    Crud<
+    Type = Report,
+    Id = ReportId,
+    NewType = ReportContent,
+    Error = AppError,
+    Filter = crate::api::report::QueryParams,
+>
+{
+}
+pub trait EventCrud:
+    Crud<
+    Type = Event,
+    Id = EventId,
+    NewType = EventContent,
+    Error = AppError,
+    Filter = crate::api::event::QueryParams,
+>
+{
+}
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -81,6 +115,10 @@ impl DataSource for InMemoryStorage {
 #[async_trait]
 impl AuthSource for RwLock<Vec<AuthInfo>> {
     async fn get_user(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo> {
-        self.read().await.iter().find(|auth| auth.client_id == client_id && auth.client_secret == client_secret).cloned()
+        self.read()
+            .await
+            .iter()
+            .find(|auth| auth.client_id == client_id && auth.client_secret == client_secret)
+            .cloned()
     }
 }

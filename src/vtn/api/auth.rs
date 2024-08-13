@@ -29,7 +29,6 @@ pub struct AccessTokenRequest {
 
 pub struct ResponseOAuthError(pub OAuthError);
 
-
 impl IntoResponse for ResponseOAuthError {
     fn into_response(self) -> Response<axum::body::Body> {
         match self.0.error {
@@ -49,8 +48,10 @@ impl IntoResponse for ResponseOAuthError {
 
 impl From<jsonwebtoken::errors::Error> for ResponseOAuthError {
     fn from(_: jsonwebtoken::errors::Error) -> Self {
-        ResponseOAuthError(OAuthError::new(OAuthErrorType::ServerError)
-            .with_description("Could not issue a new token".to_string()))
+        ResponseOAuthError(
+            OAuthError::new(OAuthErrorType::ServerError)
+                .with_description("Could not issue a new token".to_string()),
+        )
     }
 }
 
@@ -84,7 +85,8 @@ pub async fn token(
 ) -> Result<AccessTokenResponse, ResponseOAuthError> {
     if request.grant_type != "client_credentials" {
         return Err(OAuthError::new(OAuthErrorType::UnsupportedGrantType)
-            .with_description("Only client_credentials grant type is supported".to_string()).into());
+            .with_description("Only client_credentials grant type is supported".to_string())
+            .into());
     }
 
     let auth_header = authorization
@@ -108,22 +110,24 @@ pub async fn token(
 
     if auth_header.is_some() && auth_body.is_some() {
         return Err(OAuthError::new(OAuthErrorType::InvalidRequest)
-            .with_description("Both header and body authentication provided".to_string()).into());
+            .with_description("Both header and body authentication provided".to_string())
+            .into());
     }
 
     let Some((client_id, client_secret)) = auth_body.or(auth_header) else {
-        return Err(
-            OAuthError::new(OAuthErrorType::InvalidClient).with_description(
+        return Err(OAuthError::new(OAuthErrorType::InvalidClient)
+            .with_description(
                 "No valid authentication data provided, client_id and client_secret required"
                     .to_string(),
-            ).into(),
-        );
+            )
+            .into());
     };
 
     // check that the client_id and client_secret are valid
     let Some(user) = auth_source.get_user(client_id, client_secret).await else {
         return Err(OAuthError::new(OAuthErrorType::InvalidClient)
-            .with_description("Invalid client_id or client_secret".to_string()).into());
+            .with_description("Invalid client_id or client_secret".to_string())
+            .into());
     };
 
     let expiration = std::time::Duration::from_secs(3600 * 24 * 30);

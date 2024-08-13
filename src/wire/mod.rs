@@ -16,12 +16,12 @@ pub use report::Report;
 
 pub mod event;
 pub mod interval;
+pub mod oauth;
 mod problem;
 pub mod program;
 pub mod report;
 pub mod target;
 pub mod values_map;
-pub mod oauth;
 
 mod serde_rfc3339 {
     use super::*;
