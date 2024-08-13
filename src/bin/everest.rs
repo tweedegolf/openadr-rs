@@ -39,7 +39,7 @@ impl Clock for ChronoClock {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let client = openadr::Client::new("http://localhost:3000/".try_into()?);
+    let client = openadr::Client::new("http://localhost:3000/".try_into()?, None);
     let program = client.get_program(Target::Program("name")).await?;
 
     // channel used to send new timelines
