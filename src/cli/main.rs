@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "admin".to_string(),
         )),
     );
-    let created_program = client.create_program(ProgramContent::new("name")).await?;
+    let _created_program = client.create_program(ProgramContent::new("name")).await?;
     // let created_program_1 = client.create_program(ProgramContent::new("name1")).await?;
     let program = client.get_program(Target::Program("name")).await?;
     // let created_event = program

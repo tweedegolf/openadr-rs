@@ -99,11 +99,7 @@ pub async fn token(
         .map(|client_id| {
             (
                 client_id.as_str(),
-                request
-                    .client_secret
-                    .as_ref()
-                    .map(|s| s.as_str())
-                    .unwrap_or(""),
+                request.client_secret.as_deref().unwrap_or(""),
             )
         })
         .or_else(|| request.client_secret.as_ref().map(|cr| ("", cr.as_str())));

@@ -19,6 +19,7 @@ use openadr::wire::Report;
 use crate::api::{AppResponse, ValidatedQuery};
 use crate::data_source::{Crud, ReportCrud};
 use crate::error::AppError;
+use crate::jwt::{BLUser, User};
 
 impl ReportCrud for RwLock<HashMap<ReportId, Report>> {}
 
@@ -83,6 +84,7 @@ impl Crud for RwLock<HashMap<ReportId, Report>> {
 pub async fn get_all(
     State(report_source): State<Arc<dyn ReportCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
+    User(_user): User,
 ) -> AppResponse<Vec<Report>> {
     trace!(?query_params);
 
@@ -94,6 +96,7 @@ pub async fn get_all(
 pub async fn get(
     State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
+    User(_user): User,
 ) -> AppResponse<Report> {
     let report: Report = report_source.retrieve(&id).await?;
     Ok(Json(report))
@@ -108,6 +111,7 @@ pub async fn get(
 //        $ref: '#/components/schemas/problem'
 pub async fn add(
     State(report_source): State<Arc<dyn ReportCrud>>,
+    User(_user): User,
     Json(new_report): Json<ReportContent>,
 ) -> Result<(StatusCode, Json<Report>), AppError> {
     let report = report_source.create(new_report).await?;
@@ -120,6 +124,7 @@ pub async fn add(
 pub async fn edit(
     State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
+    User(_user): User,
     Json(content): Json<ReportContent>,
 ) -> AppResponse<Report> {
     let report = report_source.update(&id, content).await?;
@@ -131,6 +136,7 @@ pub async fn edit(
 
 pub async fn delete(
     State(report_source): State<Arc<dyn ReportCrud>>,
+    BLUser(_user): BLUser,
     Path(id): Path<ReportId>,
 ) -> AppResponse<Report> {
     let report = report_source.delete(&id).await?;

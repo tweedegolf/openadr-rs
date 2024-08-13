@@ -6,6 +6,7 @@ pub enum Error {
     UrlParseError(url::ParseError),
     Problem(crate::wire::Problem),
     AuthProblem(crate::wire::oauth::OAuthError),
+    OAuthTokenNotBearer,
     ObjectNotFound,
     DuplicateObject,
     InvalidParentObject,
@@ -54,6 +55,7 @@ impl std::fmt::Display for Error {
             Error::DuplicateObject => write!(f, "Found more than one object matching the filter"),
             Error::InvalidParentObject => write!(f, "Invalid parent object"),
             Error::InvalidInterval => write!(f, "Invalid interval specified"),
+            Error::OAuthTokenNotBearer => write!(f, "OAuth token received is not a Bearer token"),
         }
     }
 }

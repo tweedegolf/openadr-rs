@@ -5,7 +5,6 @@ mod target;
 mod timeline;
 
 use std::{
-    collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -128,18 +127,21 @@ impl ClientRef {
             // Refresh tokens aren't supported currently
             // #[serde(default)]
             // refresh_token: Option<String>,
-            #[serde(default)]
-            scope: Option<String>,
-            #[serde(flatten)]
-            other: HashMap<String, serde_json::Value>,
+            // #[serde(default)]
+            // scope: Option<String>,
+            // #[serde(flatten)]
+            // other: std::collections::HashMap<String, serde_json::Value>,
         }
 
         let auth_result = res.json::<AuthResult>().await?;
+        if auth_result.token_type.to_lowercase() != "bearer" {
+            return Err(crate::Error::OAuthTokenNotBearer);
+        }
         let token = AuthToken {
             token: auth_result.access_token,
             expires_in: auth_result
                 .expires_in
-                .map(|d| Duration::from_secs(d))
+                .map(Duration::from_secs)
                 .unwrap_or(auth_data.default_credential_expires_in),
             received_at: Instant::now(),
         };
