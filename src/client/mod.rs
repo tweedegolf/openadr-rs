@@ -53,7 +53,7 @@ impl ClientCredentials {
 struct AuthToken {
     token: String,
     expires_in: Duration,
-    received_at: Instant,
+    since: Instant,
 }
 
 struct ClientRef {
@@ -86,7 +86,7 @@ impl ClientRef {
 
         // if there is a token and it is valid long enough, we don't have to do anything
         if let Some(token) = self.auth_token.read().await.as_ref() {
-            if token.received_at.elapsed() < token.expires_in - auth_data.refresh_margin {
+            if token.since.elapsed() < token.expires_in - auth_data.refresh_margin {
                 return Ok(());
             }
         }
@@ -112,6 +112,7 @@ impl ClientRef {
         });
         let request = request.basic_auth(&auth_data.client_id, Some(&auth_data.client_secret));
         let request = request.header("Accept", "application/json");
+        let since = Instant::now();
         let res = request.send().await?;
         if !res.status().is_success() {
             let problem = res.json::<crate::wire::oauth::OAuthError>().await?;
@@ -143,7 +144,7 @@ impl ClientRef {
                 .expires_in
                 .map(Duration::from_secs)
                 .unwrap_or(auth_data.default_credential_expires_in),
-            received_at: Instant::now(),
+            since,
         };
 
         *self.auth_token.write().await = Some(token);
