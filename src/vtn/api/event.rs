@@ -173,7 +173,11 @@ impl QueryParams {
 
 #[cfg(test)]
 mod test {
-    use crate::{data_source::InMemoryStorage, jwt::JwtManager, state::AppState};
+    use crate::{
+        data_source::{AuthInfo, InMemoryStorage},
+        jwt::{AuthRole, JwtManager},
+        state::AppState,
+    };
 
     use super::*;
     use axum::{
@@ -200,10 +204,11 @@ mod test {
         }
     }
 
-    fn event_request(method: http::Method, event: Event) -> Request<Body> {
+    fn event_request(method: http::Method, event: Event, token: &str) -> Request<Body> {
         Request::builder()
             .method(method)
             .uri(format!("/events/{}", event.id))
+            .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
             .body(Body::from(serde_json::to_vec(&event).unwrap()))
             .unwrap()
@@ -216,7 +221,26 @@ mod test {
             store.events.write().await.insert(evt.id.clone(), evt);
         }
 
+        store.auth.write().await.push(AuthInfo {
+            client_id: "admin".to_string(),
+            client_secret: "admin".to_string(),
+            role: AuthRole::BL,
+            ven: None,
+        });
+
         AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
+    }
+
+    fn get_admin_token_from_state(state: &AppState) -> String {
+        state
+            .jwt_manager
+            .create(
+                std::time::Duration::from_secs(3600),
+                "admin".to_string(),
+                AuthRole::BL,
+                None,
+            )
+            .unwrap()
     }
 
     #[tokio::test]
@@ -225,6 +249,7 @@ mod test {
         let event_id = event.id.clone();
 
         let state = state_with_events(vec![event.clone()]).await;
+        let token = get_admin_token_from_state(&state);
         let app = crate::app_with_state(state);
 
         let response = app
@@ -232,6 +257,8 @@ mod test {
                 Request::builder()
                     .method(http::Method::GET)
                     .uri(format!("/events/{event_id}"))
+                    .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
+                    .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -272,10 +299,12 @@ mod test {
         let event_id = events[1].id.clone();
 
         let state = state_with_events(events).await;
+        let token = get_admin_token_from_state(&state);
         let mut app = crate::app_with_state(state);
 
         let request = Request::builder()
             .method(http::Method::DELETE)
+            .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .uri(format!("/events/{event_id}"))
             .body(Body::empty())
             .unwrap();
@@ -294,7 +323,7 @@ mod test {
 
         assert_eq!(event2, db_event.content);
 
-        let response = retrieve_all_with_filter_help(&mut app, "").await;
+        let response = retrieve_all_with_filter_help(&mut app, "", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = response.into_body().collect().await.unwrap().to_bytes();
@@ -307,10 +336,11 @@ mod test {
         let event = Event::new(default_content());
 
         let state = state_with_events(vec![event.clone()]).await;
+        let token = get_admin_token_from_state(&state);
         let app = crate::app_with_state(state);
 
         let response = app
-            .oneshot(event_request(http::Method::PUT, event.clone()))
+            .oneshot(event_request(http::Method::PUT, event.clone(), &token))
             .await
             .unwrap();
 
@@ -326,6 +356,7 @@ mod test {
     #[tokio::test]
     async fn create_same_name() {
         let state = state_with_events(vec![]).await;
+        let token = get_admin_token_from_state(&state);
         let mut app = crate::app_with_state(state);
 
         let event = Event::new(default_content());
@@ -334,6 +365,7 @@ mod test {
         let request = Request::builder()
             .method(http::Method::POST)
             .uri("/events")
+            .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
             .body(Body::from(serde_json::to_vec(&content).unwrap()))
             .unwrap();
@@ -349,6 +381,7 @@ mod test {
         let request = Request::builder()
             .method(http::Method::POST)
             .uri("/events")
+            .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
             .body(Body::from(serde_json::to_vec(&content).unwrap()))
             .unwrap();
@@ -358,10 +391,15 @@ mod test {
         assert_eq!(response.status(), StatusCode::CREATED);
     }
 
-    async fn retrieve_all_with_filter_help(app: &mut Router, query_params: &str) -> Response<Body> {
+    async fn retrieve_all_with_filter_help(
+        app: &mut Router,
+        query_params: &str,
+        token: &str,
+    ) -> Response<Body> {
         let request = Request::builder()
             .method(http::Method::GET)
             .uri(format!("/events?{query_params}"))
+            .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
             .body(Body::empty())
             .unwrap();
@@ -395,10 +433,11 @@ mod test {
         let events = vec![Event::new(event1), Event::new(event2), Event::new(event3)];
 
         let state = state_with_events(events).await;
+        let token = get_admin_token_from_state(&state);
         let mut app = crate::app_with_state(state);
 
         // no query params
-        let response = retrieve_all_with_filter_help(&mut app, "").await;
+        let response = retrieve_all_with_filter_help(&mut app, "", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = response.into_body().collect().await.unwrap().to_bytes();
@@ -406,7 +445,7 @@ mod test {
         assert_eq!(programs.len(), 3);
 
         // skip
-        let response = retrieve_all_with_filter_help(&mut app, "skip=1").await;
+        let response = retrieve_all_with_filter_help(&mut app, "skip=1", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = response.into_body().collect().await.unwrap().to_bytes();
@@ -414,7 +453,7 @@ mod test {
         assert_eq!(programs.len(), 2);
 
         // limit
-        let response = retrieve_all_with_filter_help(&mut app, "limit=2").await;
+        let response = retrieve_all_with_filter_help(&mut app, "limit=2", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = response.into_body().collect().await.unwrap().to_bytes();
@@ -422,17 +461,18 @@ mod test {
         assert_eq!(programs.len(), 2);
 
         // program name
-        let response = retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE").await;
+        let response = retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE", &token).await;
         assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
 
         let response = retrieve_all_with_filter_help(
             &mut app,
             "targetType=PROGRAM_NAME&targetValues=program1&targetValues=program2",
+            &token,
         )
         .await;
         assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
 
-        let response = retrieve_all_with_filter_help(&mut app, "programID=program1").await;
+        let response = retrieve_all_with_filter_help(&mut app, "programID=program1", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = response.into_body().collect().await.unwrap().to_bytes();
