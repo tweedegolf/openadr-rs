@@ -258,7 +258,6 @@ mod test {
                     .method(http::Method::GET)
                     .uri(format!("/events/{event_id}"))
                     .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
-                    .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
             )
