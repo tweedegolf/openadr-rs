@@ -288,7 +288,7 @@ mod test {
 
         let state = state_with_programs(vec![program.clone()]).await;
         let token = get_admin_token_from_state(&state);
-        let app = crate::app_with_state(state);
+        let app = state.into_router();
 
         let response = app
             .oneshot(
@@ -334,7 +334,7 @@ mod test {
 
         let state = state_with_programs(programs).await;
         let token = get_admin_token_from_state(&state);
-        let mut app = crate::app_with_state(state);
+        let mut app = state.into_router();
 
         let request = Request::builder()
             .method(http::Method::DELETE)
@@ -371,7 +371,7 @@ mod test {
 
         let state = state_with_programs(vec![program.clone()]).await;
         let token = get_admin_token_from_state(&state);
-        let app = crate::app_with_state(state);
+        let app = state.into_router();
 
         let response = app
             .oneshot(program_request(http::Method::PUT, program.clone(), &token))
@@ -393,7 +393,7 @@ mod test {
 
         let state = state_with_programs(vec![program.clone()]).await;
         let token = get_admin_token_from_state(&state);
-        let app = crate::app_with_state(state);
+        let app = state.into_router();
 
         // different id, same (default) name
         let program = Program::new(default_content());
@@ -410,7 +410,7 @@ mod test {
     async fn create_same_name() {
         let state = state_with_programs(vec![]).await;
         let token = get_admin_token_from_state(&state);
-        let mut app = crate::app_with_state(state);
+        let mut app = state.into_router();
 
         let program = Program::new(default_content());
         let content = program.content;
@@ -487,7 +487,7 @@ mod test {
 
         let state = state_with_programs(programs).await;
         let token = get_admin_token_from_state(&state);
-        let mut app = crate::app_with_state(state);
+        let mut app = state.into_router();
 
         // no query params
         let response = retrieve_all_with_filter_help(&mut app, "", &token).await;

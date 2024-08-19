@@ -250,7 +250,7 @@ mod test {
 
         let state = state_with_events(vec![event.clone()]).await;
         let token = get_admin_token_from_state(&state);
-        let app = crate::app_with_state(state);
+        let app = state.into_router();
 
         let response = app
             .oneshot(
@@ -299,7 +299,7 @@ mod test {
 
         let state = state_with_events(events).await;
         let token = get_admin_token_from_state(&state);
-        let mut app = crate::app_with_state(state);
+        let mut app = state.into_router();
 
         let request = Request::builder()
             .method(http::Method::DELETE)
@@ -336,7 +336,7 @@ mod test {
 
         let state = state_with_events(vec![event.clone()]).await;
         let token = get_admin_token_from_state(&state);
-        let app = crate::app_with_state(state);
+        let app = state.into_router();
 
         let response = app
             .oneshot(event_request(http::Method::PUT, event.clone(), &token))
@@ -356,7 +356,7 @@ mod test {
     async fn create_same_name() {
         let state = state_with_events(vec![]).await;
         let token = get_admin_token_from_state(&state);
-        let mut app = crate::app_with_state(state);
+        let mut app = state.into_router();
 
         let event = Event::new(default_content());
         let content = event.content;
@@ -433,7 +433,7 @@ mod test {
 
         let state = state_with_events(events).await;
         let token = get_admin_token_from_state(&state);
-        let mut app = crate::app_with_state(state);
+        let mut app = state.into_router();
 
         // no query params
         let response = retrieve_all_with_filter_help(&mut app, "", &token).await;

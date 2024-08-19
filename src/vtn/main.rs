@@ -42,7 +42,7 @@ async fn main() {
     });
     let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());
 
-    if let Err(e) = axum::serve(listener, app_with_state(state))
+    if let Err(e) = axum::serve(listener, state.into_router())
         .with_graceful_shutdown(shutdown_signal())
         .await
     {
@@ -50,27 +50,32 @@ async fn main() {
     }
 }
 
-pub(crate) fn app_with_state(state: AppState) -> Router {
-    Router::new()
-        .route("/programs", get(program::get_all).post(program::add))
-        .route(
-            "/programs/:id",
-            get(program::get).put(program::edit).delete(program::delete),
-        )
-        .route("/reports", get(report::get_all).post(report::add))
-        .route(
-            "/reports/:id",
-            get(report::get).put(report::edit).delete(report::delete),
-        )
-        .route("/events", get(event::get_all).post(event::add))
-        .route(
-            "/events/:id",
-            get(event::get).put(event::edit).delete(event::delete),
-        )
-        .route("/auth/register", post(auth::register))
-        .route("/auth/token", post(auth::token))
-        .layer(TraceLayer::new_for_http())
-        .with_state(state)
+impl AppState {
+    fn router_without_state() -> axum::Router<Self> {
+        axum::Router::new()
+            .route("/programs", get(program::get_all).post(program::add))
+            .route(
+                "/programs/:id",
+                get(program::get).put(program::edit).delete(program::delete),
+            )
+            .route("/reports", get(report::get_all).post(report::add))
+            .route(
+                "/reports/:id",
+                get(report::get).put(report::edit).delete(report::delete),
+            )
+            .route("/events", get(event::get_all).post(event::add))
+            .route(
+                "/events/:id",
+                get(event::get).put(event::edit).delete(event::delete),
+            )
+            .route("/auth/register", post(auth::register))
+            .route("/auth/token", post(auth::token))
+            .layer(TraceLayer::new_for_http())
+    }
+
+    pub fn into_router(self) -> Router {
+        Self::router_without_state().with_state(self)
+    }
 }
 
 async fn shutdown_signal() {
