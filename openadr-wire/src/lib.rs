@@ -16,6 +16,7 @@ pub use report::Report;
 pub mod event;
 pub mod interval;
 pub mod oauth;
+pub mod problem;
 pub mod program;
 pub mod report;
 pub mod target;

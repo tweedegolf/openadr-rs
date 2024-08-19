@@ -4,7 +4,7 @@ pub enum Error {
     Reqwest(reqwest::Error),
     Serde(serde_json::Error),
     UrlParseError(url::ParseError),
-    Problem(openadr_vtn::Problem),
+    Problem(openadr_wire::problem::Problem),
     AuthProblem(openadr_wire::oauth::OAuthError),
     OAuthTokenNotBearer,
     ObjectNotFound,
@@ -31,8 +31,8 @@ impl From<url::ParseError> for Error {
     }
 }
 
-impl From<openadr_vtn::Problem> for Error {
-    fn from(err: openadr_vtn::Problem) -> Self {
+impl From<openadr_wire::problem::Problem> for Error {
+    fn from(err: openadr_wire::problem::Problem) -> Self {
         Error::Problem(err)
     }
 }

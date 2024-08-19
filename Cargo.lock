@@ -887,7 +887,6 @@ dependencies = [
  "axum",
  "chrono",
  "http-body-util",
- "openadr-vtn",
  "openadr-wire",
  "rangemap",
  "reqwest",
@@ -931,6 +930,7 @@ name = "openadr-wire"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "http",
  "iso8601-duration",
  "quickcheck",
  "serde",

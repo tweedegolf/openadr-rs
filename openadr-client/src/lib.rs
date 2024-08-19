@@ -216,7 +216,7 @@ impl ReqwestClientRef {
 
         // handle any errors returned by the server
         if !res.status().is_success() {
-            let problem = res.json::<openadr_vtn::Problem>().await?;
+            let problem = res.json::<openadr_wire::problem::Problem>().await?;
             return Err(crate::error::Error::from(problem));
         }
 

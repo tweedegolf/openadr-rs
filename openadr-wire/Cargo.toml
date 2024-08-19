@@ -17,6 +17,7 @@ serde_with.workspace  = true
 uuid.workspace = true
 iso8601-duration.workspace = true
 thiserror.workspace = true
+http.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
