@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    client::ClientRef,
     wire::{
         report::{ReportContent, ReportObjectType},
         Event, Report,
@@ -8,17 +9,15 @@ use crate::{
     EventContent, ReportClient, Result,
 };
 
-use super::ClientRef;
-
 #[derive(Debug)]
-pub struct EventClient {
-    client: Arc<ClientRef>,
+pub struct EventClient<C> {
+    client: Arc<C>,
     data: Event,
 }
 
-impl EventClient {
-    pub(super) fn from_event(client: Arc<ClientRef>, event: Event) -> EventClient {
-        EventClient {
+impl<C: ClientRef> EventClient<C> {
+    pub(super) fn from_event(client: Arc<C>, event: Event) -> Self {
+        Self {
             client,
             data: event,
         }
@@ -75,7 +74,7 @@ impl EventClient {
     }
 
     /// Create a new report for the event
-    pub async fn create_report(&self, report_data: ReportContent) -> Result<ReportClient> {
+    pub async fn create_report(&self, report_data: ReportContent) -> Result<ReportClient<C>> {
         if report_data.program_id != self.data().program_id {
             return Err(crate::Error::InvalidParentObject);
         }
@@ -93,7 +92,7 @@ impl EventClient {
         client_name: Option<&str>,
         skip: usize,
         limit: usize,
-    ) -> Result<Vec<ReportClient>> {
+    ) -> Result<Vec<ReportClient<C>>> {
         let skip_str = skip.to_string();
         let limit_str = limit.to_string();
 
@@ -116,8 +115,8 @@ impl EventClient {
     }
 
     /// Get all reports from the VTN for a specific client, trying to paginate whenever possible
-    pub async fn get_client_reports(&self, client_name: &str) -> Result<Vec<ReportClient>> {
-        let page_size = self.client.default_page_size;
+    pub async fn get_client_reports(&self, client_name: &str) -> Result<Vec<ReportClient<C>>> {
+        let page_size = self.client.default_page_size();
         let mut reports = vec![];
         let mut page = 0;
         loop {
@@ -140,8 +139,8 @@ impl EventClient {
     }
 
     /// Get all reports from the VTN, trying to paginate whenever possible
-    pub async fn get_all_reports(&self) -> Result<Vec<ReportClient>> {
-        let page_size = self.client.default_page_size;
+    pub async fn get_all_reports(&self) -> Result<Vec<ReportClient<C>>> {
+        let page_size = self.client.default_page_size();
         let mut reports = vec![];
         let mut page = 0;
         loop {

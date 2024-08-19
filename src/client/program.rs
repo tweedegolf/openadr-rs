@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    client::ClientRef,
     wire::{
         event::{EventObjectType, Priority},
         target::TargetLabel,
@@ -9,19 +10,17 @@ use crate::{
     Error, EventClient, EventContent, ProgramContent, ProgramId, Result, Target, Timeline,
 };
 
-use super::ClientRef;
-
 /// A client for interacting with the data in a specific program and the events
 /// contained in the program.
 #[derive(Debug)]
-pub struct ProgramClient {
-    client: Arc<ClientRef>,
+pub struct ProgramClient<C> {
+    client: Arc<C>,
     data: Program,
 }
 
-impl ProgramClient {
-    pub(super) fn from_program(client: Arc<ClientRef>, program: Program) -> ProgramClient {
-        ProgramClient {
+impl<C: ClientRef> ProgramClient<C> {
+    pub(super) fn from_program(client: Arc<C>, program: Program) -> Self {
+        Self {
             client,
             data: program,
         }
@@ -71,7 +70,7 @@ impl ProgramClient {
     }
 
     /// Create a new event on the VTN
-    pub async fn create_event(&self, event_data: EventContent) -> Result<EventClient> {
+    pub async fn create_event(&self, event_data: EventContent) -> Result<EventClient<C>> {
         if &event_data.program_id != self.id() {
             return Err(crate::Error::InvalidParentObject);
         }
@@ -100,7 +99,7 @@ impl ProgramClient {
         targets: &[&str],
         skip: usize,
         limit: usize,
-    ) -> Result<Vec<EventClient>> {
+    ) -> Result<Vec<EventClient<C>>> {
         // convert query params
         let target_type_str = target_type.map(|t| t.to_string());
         let skip_str = skip.to_string();
@@ -126,7 +125,7 @@ impl ProgramClient {
     }
 
     /// Get a single event from the VTN that matches the given target
-    pub async fn get_event(&self, target: Target<'_>) -> Result<EventClient> {
+    pub async fn get_event(&self, target: Target<'_>) -> Result<EventClient<C>> {
         let mut events = self
             .get_events_req(Some(target.target_label()), target.target_values(), 0, 2)
             .await?;
@@ -140,8 +139,8 @@ impl ProgramClient {
     }
 
     /// Get a list of events from the VTN with the given query parameters
-    pub async fn get_event_list(&self, target: Target<'_>) -> Result<Vec<EventClient>> {
-        let page_size = self.client.default_page_size;
+    pub async fn get_event_list(&self, target: Target<'_>) -> Result<Vec<EventClient<C>>> {
+        let page_size = self.client.default_page_size();
         let mut events = vec![];
         let mut page = 0;
         loop {
@@ -169,8 +168,8 @@ impl ProgramClient {
     }
 
     /// Get all events from the VTN, trying to paginate whenever possible
-    pub async fn get_all_events(&self) -> Result<Vec<EventClient>> {
-        let page_size = self.client.default_page_size;
+    pub async fn get_all_events(&self) -> Result<Vec<EventClient<C>>> {
+        let page_size = self.client.default_page_size();
         let mut events = vec![];
         let mut page = 0;
         loop {

@@ -162,7 +162,7 @@ pub enum PayloadDescriptor {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]

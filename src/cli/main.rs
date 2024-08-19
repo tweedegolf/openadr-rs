@@ -2,7 +2,7 @@ use openadr::{ClientCredentials, ProgramContent, Target};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = openadr::Client::new(
+    let client = openadr::Client::with_url(
         "http://localhost:3000/".try_into()?,
         Some(ClientCredentials::new(
             "admin".to_string(),
