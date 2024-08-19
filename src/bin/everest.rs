@@ -4,7 +4,7 @@ use openadr::{
         event::{EventType, EventValuesMap},
         values_map::Value,
     },
-    ProgramClient, Target, Timeline,
+    ClientRef, ProgramClient, Target, Timeline,
 };
 use std::{error::Error, time::Duration};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -39,7 +39,7 @@ impl Clock for ChronoClock {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let client = openadr::Client::new("http://localhost:3000/".try_into()?, None);
+    let client = openadr::Client::with_url("http://localhost:3000/".try_into()?, None);
     let program = client.get_program(Target::Program("name")).await?;
 
     // channel used to send new timelines
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn poll_timeline(
-    mut program: ProgramClient,
+    mut program: ProgramClient<impl ClientRef>,
     poll_interval: std::time::Duration,
     sender: mpsc::Sender<Timeline>,
 ) -> Result<(), openadr::Error> {

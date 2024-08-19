@@ -5,11 +5,16 @@ mod target;
 mod timeline;
 
 use std::{
+    future::Future,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use tokio::sync::RwLock;
+
+use axum::body::Body;
+use http_body_util::BodyExt;
+use tower::{Service, ServiceExt};
 use url::Url;
 
 pub use event::*;
@@ -28,8 +33,8 @@ use crate::Result;
 /// Client used for interaction with a VTN.
 ///
 /// Can be used to implement both, the VEN and the business logic
-pub struct Client {
-    client_ref: Arc<ReqwestClientRef>,
+pub struct Client<T> {
+    client_ref: Arc<T>,
 }
 
 pub struct ClientCredentials {
@@ -56,7 +61,7 @@ struct AuthToken {
     since: Instant,
 }
 
-struct ReqwestClientRef {
+pub struct ReqwestClientRef {
     client: reqwest::Client,
     base_url: url::Url,
     default_page_size: usize,
@@ -152,25 +157,37 @@ impl ReqwestClientRef {
     }
 }
 
-#[async_trait::async_trait]
-pub(crate) trait ClientRef {
-    async fn get<T: serde::de::DeserializeOwned>(
+pub trait ClientRef {
+    fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, &str)],
-    ) -> Result<T>;
+    ) -> impl Future<Output = Result<T>> + Send;
 
-    async fn post<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
+    fn post<S, T>(
+        &self,
+        path: &str,
+        body: &S,
+        query: &[(&str, &str)],
+    ) -> impl Future<Output = Result<T>> + Send
     where
         S: serde::ser::Serialize + Sync,
         T: serde::de::DeserializeOwned;
 
-    async fn put<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
+    fn put<S, T>(
+        &self,
+        path: &str,
+        body: &S,
+        query: &[(&str, &str)],
+    ) -> impl Future<Output = Result<T>> + Send
     where
         S: serde::ser::Serialize + Sync,
         T: serde::de::DeserializeOwned;
 
-    async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()>;
+    fn delete(&self, path: &str, query: &[(&str, &str)])
+        -> impl Future<Output = Result<()>> + Send;
+
+    fn default_page_size(&self) -> usize;
 }
 
 impl ReqwestClientRef {
@@ -204,7 +221,6 @@ impl ReqwestClientRef {
     }
 }
 
-#[async_trait::async_trait]
 impl ClientRef for ReqwestClientRef {
     async fn get<T: serde::de::DeserializeOwned>(
         &self,
@@ -241,11 +257,108 @@ impl ClientRef for ReqwestClientRef {
         let request = self.client.delete(url);
         self.request(request, query).await
     }
+
+    fn default_page_size(&self) -> usize {
+        self.default_page_size
+    }
 }
 
-impl Client {
+pub struct MockClientRef {
+    router: Arc<tokio::sync::Mutex<axum::Router>>,
+    default_page_size: usize,
+}
+
+impl MockClientRef {
+    pub fn new(router: axum::Router) -> Self {
+        MockClientRef {
+            router: Arc::new(tokio::sync::Mutex::new(router)),
+            default_page_size: 50,
+        }
+    }
+
+    async fn request<T: serde::de::DeserializeOwned>(
+        &self,
+        method: axum::http::Method,
+        path: &str,
+        body: Option<Vec<u8>>,
+        query: &[(&str, &str)],
+    ) -> Result<T> {
+        let mut uri = format!("/{path}?");
+        let mut it = query.iter().peekable();
+
+        while let Some((key, value)) = it.next() {
+            uri.push_str(key);
+            uri.push('=');
+            uri.push_str(value);
+
+            if it.peek().is_some() {
+                uri.push('&');
+            }
+        }
+
+        let request = axum::http::Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::from(body.unwrap_or_default()))
+            .unwrap();
+
+        let response =
+            ServiceExt::<axum::http::Request<Body>>::ready(&mut *self.router.lock().await)
+                .await
+                .unwrap()
+                .call(request)
+                .await
+                .unwrap();
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+
+        Ok(serde_json::from_slice(&body).unwrap())
+    }
+}
+
+impl ClientRef for MockClientRef {
+    async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> Result<T> {
+        self.request(axum::http::Method::GET, path, None, query)
+            .await
+    }
+
+    async fn post<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
+    where
+        S: serde::ser::Serialize + Sync,
+        T: serde::de::DeserializeOwned,
+    {
+        let body = serde_json::to_vec(body)?;
+        self.request(axum::http::Method::POST, path, Some(body), query)
+            .await
+    }
+
+    async fn put<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
+    where
+        S: serde::ser::Serialize + Sync,
+        T: serde::de::DeserializeOwned,
+    {
+        let body = serde_json::to_vec(body)?;
+        self.request(axum::http::Method::PUT, path, Some(body), query)
+            .await
+    }
+
+    async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()> {
+        self.request(axum::http::Method::DELETE, path, None, query)
+            .await
+    }
+
+    fn default_page_size(&self) -> usize {
+        self.default_page_size
+    }
+}
+
+impl Client<ReqwestClientRef> {
     /// Create a new client for a VTN located at the specified URL
-    pub fn new(base_url: Url, auth: Option<ClientCredentials>) -> Client {
+    pub fn with_url(base_url: Url, auth: Option<ClientCredentials>) -> Self {
         let client = reqwest::Client::new();
         Self::with_reqwest(base_url, client, auth)
     }
@@ -256,20 +369,28 @@ impl Client {
         base_url: Url,
         client: reqwest::Client,
         auth: Option<ClientCredentials>,
-    ) -> Client {
+    ) -> Self {
+        let client_ref = ReqwestClientRef {
+            client,
+            base_url,
+            default_page_size: 50,
+            auth_data: auth,
+            auth_token: RwLock::new(None),
+        };
+
+        Self::new(client_ref)
+    }
+}
+
+impl<C: ClientRef> Client<C> {
+    pub fn new(client_ref: C) -> Self {
         Client {
-            client_ref: Arc::new(ReqwestClientRef {
-                client,
-                base_url,
-                default_page_size: 50,
-                auth_data: auth,
-                auth_token: RwLock::new(None),
-            }),
+            client_ref: Arc::new(client_ref),
         }
     }
 
     /// Create a new program on the VTN
-    pub async fn create_program(&self, program_data: ProgramContent) -> Result<ProgramClient> {
+    pub async fn create_program(&self, program_data: ProgramContent) -> Result<ProgramClient<C>> {
         let program = self.client_ref.post("programs", &program_data, &[]).await?;
         Ok(ProgramClient::from_program(
             self.client_ref.clone(),
@@ -284,7 +405,7 @@ impl Client {
         targets: &[&str],
         skip: usize,
         limit: usize,
-    ) -> Result<Vec<ProgramClient>> {
+    ) -> Result<Vec<ProgramClient<C>>> {
         // convert query params
         let target_type_str = target_type.map(|t| t.to_string());
         let skip_str = skip.to_string();
@@ -296,7 +417,7 @@ impl Client {
             for target in targets {
                 query.push(("targetValues", *target));
             }
-            query.push(("targetType", target_type_ref));
+            query.push(("targetType", target_type_ref.as_str()));
         }
         query.push(("skip", &skip_str));
         query.push(("limit", &limit_str));
@@ -310,22 +431,21 @@ impl Client {
     }
 
     /// Get a single program from the VTN that matches the given target
-    pub async fn get_program(&self, target: Target<'_>) -> Result<ProgramClient> {
+    pub async fn get_program(&self, target: Target<'_>) -> Result<ProgramClient<C>> {
         let mut programs = self
             .get_programs_req(Some(target.target_label()), target.target_values(), 0, 2)
             .await?;
-        if programs.is_empty() {
-            Err(crate::Error::ObjectNotFound)
-        } else if programs.len() > 1 {
-            Err(crate::Error::DuplicateObject)
-        } else {
-            Ok(programs.remove(0))
+
+        match programs[..] {
+            [] => Err(crate::Error::ObjectNotFound),
+            [_] => Ok(programs.remove(0)),
+            [..] => Err(crate::Error::DuplicateObject),
         }
     }
 
     /// Get a list of programs from the VTN with the given query parameters
-    pub async fn get_program_list(&self, target: Target<'_>) -> Result<Vec<ProgramClient>> {
-        let page_size = self.client_ref.default_page_size;
+    pub async fn get_program_list(&self, target: Target<'_>) -> Result<Vec<ProgramClient<C>>> {
+        let page_size = self.client_ref.default_page_size();
         let mut programs = vec![];
         let mut page = 0;
         loop {
@@ -353,8 +473,8 @@ impl Client {
     }
 
     /// Get all programs from the VTN, trying to paginate whenever possible
-    pub async fn get_all_programs(&self) -> Result<Vec<ProgramClient>> {
-        let page_size = self.client_ref.default_page_size;
+    pub async fn get_all_programs(&self) -> Result<Vec<ProgramClient<C>>> {
+        let page_size = self.client_ref.default_page_size();
         let mut programs = vec![];
         let mut page = 0;
         loop {
@@ -378,12 +498,12 @@ impl Client {
     }
 
     /// Get a program by name
-    pub async fn get_program_by_name(&self, name: &str) -> Result<ProgramClient> {
+    pub async fn get_program_by_name(&self, name: &str) -> Result<ProgramClient<C>> {
         self.get_program(Target::Program(name)).await
     }
 
     /// Get a program by id
-    pub async fn get_program_by_id(&self, id: &ProgramId) -> Result<ProgramClient> {
+    pub async fn get_program_by_id(&self, id: &ProgramId) -> Result<ProgramClient<C>> {
         let program = self
             .client_ref
             .get(&format!("programs/{}", id.0), &[])

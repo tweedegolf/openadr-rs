@@ -30,11 +30,11 @@ iso8601-duration = { version = "0.2.0", features = ["chrono"] }
 rangemap = "1.5.1"
 jsonwebtoken = "9.3.0"
 async-trait = "0.1.81"
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1.0"
 
 [dev-dependencies]
 quickcheck = "1.0.3"
-tower = { version = "0.4", features = ["util"] }
-http-body-util = "0.1.0"
 mime = "0.3"
 tokio = { version = "1.37.0", features = ["full", "test-util"] }
 

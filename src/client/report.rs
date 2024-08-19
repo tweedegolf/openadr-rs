@@ -6,17 +6,15 @@ use crate::{
     Result,
 };
 
-use super::ReqwestClientRef;
-
 #[derive(Debug)]
-pub struct ReportClient {
-    client: Arc<ReqwestClientRef>,
+pub struct ReportClient<C> {
+    client: Arc<C>,
     data: Report,
 }
 
-impl ReportClient {
-    pub(super) fn from_report(client: Arc<ReqwestClientRef>, report: Report) -> ReportClient {
-        ReportClient {
+impl<C: ClientRef> ReportClient<C> {
+    pub(super) fn from_report(client: Arc<C>, report: Report) -> Self {
+        Self {
             client,
             data: report,
         }
