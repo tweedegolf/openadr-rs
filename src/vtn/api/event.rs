@@ -214,19 +214,22 @@ mod test {
             .unwrap()
     }
 
-    async fn state_with_events(events: Vec<Event>) -> AppState {
+    fn state_with_events(events: Vec<Event>) -> AppState {
         let store = InMemoryStorage::default();
 
-        for evt in events {
-            store.events.write().await.insert(evt.id.clone(), evt);
-        }
-
-        store.auth.write().await.push(AuthInfo {
+        store.auth.try_write().unwrap().push(AuthInfo {
             client_id: "admin".to_string(),
             client_secret: "admin".to_string(),
             role: AuthRole::BL,
             ven: None,
         });
+
+        {
+            let mut writer = store.events.try_write().unwrap();
+            for event in events {
+                writer.insert(event.id.clone(), event);
+            }
+        }
 
         AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
     }
@@ -248,7 +251,7 @@ mod test {
         let event = Event::new(default_content());
         let event_id = event.id.clone();
 
-        let state = state_with_events(vec![event.clone()]).await;
+        let state = state_with_events(vec![event.clone()]);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -297,7 +300,7 @@ mod test {
         ];
         let event_id = events[1].id.clone();
 
-        let state = state_with_events(events).await;
+        let state = state_with_events(events);
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
@@ -334,7 +337,7 @@ mod test {
     async fn update() {
         let event = Event::new(default_content());
 
-        let state = state_with_events(vec![event.clone()]).await;
+        let state = state_with_events(vec![event.clone()]);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -354,7 +357,7 @@ mod test {
 
     #[tokio::test]
     async fn create_same_name() {
-        let state = state_with_events(vec![]).await;
+        let state = state_with_events(vec![]);
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
@@ -431,7 +434,7 @@ mod test {
 
         let events = vec![Event::new(event1), Event::new(event2), Event::new(event3)];
 
-        let state = state_with_events(events).await;
+        let state = state_with_events(events);
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 

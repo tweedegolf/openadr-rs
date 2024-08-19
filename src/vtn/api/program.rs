@@ -248,23 +248,22 @@ mod test {
             .unwrap()
     }
 
-    async fn state_with_programs(programs: Vec<Program>) -> AppState {
+    fn state_with_programs(programs: Vec<Program>) -> AppState {
         let store = InMemoryStorage::default();
 
-        for program in programs {
-            store
-                .programs
-                .write()
-                .await
-                .insert(program.id.clone(), program);
-        }
-
-        store.auth.write().await.push(AuthInfo {
+        store.auth.try_write().unwrap().push(AuthInfo {
             client_id: "admin".to_string(),
             client_secret: "admin".to_string(),
             role: AuthRole::BL,
             ven: None,
         });
+
+        {
+            let mut writer = store.programs.try_write().unwrap();
+            for program in programs {
+                writer.insert(program.id.clone(), program);
+            }
+        }
 
         AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
     }
@@ -286,7 +285,7 @@ mod test {
         let program = Program::new(default_content());
         let program_id = program.id.clone();
 
-        let state = state_with_programs(vec![program.clone()]).await;
+        let state = state_with_programs(vec![program.clone()]);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -332,7 +331,7 @@ mod test {
         ];
         let program_id = programs[1].id.clone();
 
-        let state = state_with_programs(programs).await;
+        let state = state_with_programs(programs);
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
@@ -369,7 +368,7 @@ mod test {
     async fn update() {
         let program = Program::new(default_content());
 
-        let state = state_with_programs(vec![program.clone()]).await;
+        let state = state_with_programs(vec![program.clone()]);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -391,7 +390,7 @@ mod test {
     async fn update_same_name() {
         let program = Program::new(default_content());
 
-        let state = state_with_programs(vec![program.clone()]).await;
+        let state = state_with_programs(vec![program.clone()]);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -408,7 +407,7 @@ mod test {
 
     #[tokio::test]
     async fn create_same_name() {
-        let state = state_with_programs(vec![]).await;
+        let state = state_with_programs(vec![]);
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
@@ -485,7 +484,7 @@ mod test {
             Program::new(program3),
         ];
 
-        let state = state_with_programs(programs).await;
+        let state = state_with_programs(programs);
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
