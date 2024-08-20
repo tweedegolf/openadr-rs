@@ -19,7 +19,7 @@ use openadr_wire::Report;
 use crate::api::{AppResponse, ValidatedQuery};
 use crate::data_source::{Crud, ReportCrud};
 use crate::error::AppError;
-use crate::jwt::{BLUser, User};
+use crate::jwt::{BusinessUser, User};
 
 impl ReportCrud for RwLock<HashMap<ReportId, Report>> {}
 
@@ -136,7 +136,7 @@ pub async fn edit(
 
 pub async fn delete(
     State(report_source): State<Arc<dyn ReportCrud>>,
-    BLUser(_user): BLUser,
+    BusinessUser(_user): BusinessUser,
     Path(id): Path<ReportId>,
 ) -> AppResponse<Report> {
     let report = report_source.delete(&id).await?;

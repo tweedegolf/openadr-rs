@@ -17,7 +17,7 @@ use openadr_wire::Program;
 use crate::api::{AppResponse, ValidatedQuery};
 use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
-use crate::jwt::{BLUser, User};
+use crate::jwt::{BusinessUser, User};
 
 impl ProgramCrud for RwLock<HashMap<ProgramId, Program>> {}
 
@@ -132,7 +132,7 @@ pub async fn get(
 
 pub async fn add(
     State(program_source): State<Arc<dyn ProgramCrud>>,
-    BLUser(_user): BLUser,
+    BusinessUser(_user): BusinessUser,
     Json(new_program): Json<ProgramContent>,
 ) -> Result<(StatusCode, Json<Program>), AppError> {
     let program = program_source.create(new_program).await?;
@@ -143,7 +143,7 @@ pub async fn add(
 pub async fn edit(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
-    BLUser(_user): BLUser,
+    BusinessUser(_user): BusinessUser,
     Json(content): Json<ProgramContent>,
 ) -> AppResponse<Program> {
     let program = program_source.update(&id, content).await?;
@@ -156,7 +156,7 @@ pub async fn edit(
 pub async fn delete(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
-    BLUser(_user): BLUser,
+    BusinessUser(_user): BusinessUser,
 ) -> AppResponse<Program> {
     let program = program_source.delete(&id).await?;
     info!(%id, "deleted program");
@@ -254,8 +254,7 @@ mod test {
         store.auth.try_write().unwrap().push(AuthInfo {
             client_id: "admin".to_string(),
             client_secret: "admin".to_string(),
-            role: AuthRole::BL,
-            ven: None,
+            roles: vec![AuthRole::Business(None), AuthRole::UserManager],
         });
 
         {
@@ -274,8 +273,7 @@ mod test {
             .create(
                 std::time::Duration::from_secs(3600),
                 "admin".to_string(),
-                AuthRole::BL,
-                None,
+                vec![AuthRole::Business(None), AuthRole::UserManager],
             )
             .unwrap()
     }

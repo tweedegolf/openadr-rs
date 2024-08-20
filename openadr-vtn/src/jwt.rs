@@ -19,11 +19,26 @@ pub struct JwtManager {
     decoding_key: DecodingKey,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "role", content = "id")]
 pub enum AuthRole {
-    BL,
-    VEN,
+    UserManager,
+    Business(Option<String>),
+    VEN(String),
+}
+
+impl AuthRole {
+    pub fn is_business(&self) -> bool {
+        matches!(self, AuthRole::Business(_))
+    }
+
+    pub fn is_ven(&self) -> bool {
+        matches!(self, AuthRole::VEN(_))
+    }
+
+    pub fn is_user_manager(&self) -> bool {
+        matches!(self, AuthRole::UserManager)
+    }
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -31,8 +46,56 @@ pub struct Claims {
     exp: usize,
     nbf: usize,
     pub sub: String,
-    pub role: AuthRole,
-    pub ven: Option<String>,
+    pub roles: Vec<AuthRole>,
+}
+
+impl Claims {
+    pub fn ven_ids(&self) -> Vec<String> {
+        self.roles
+            .iter()
+            .filter_map(|role| {
+                if let AuthRole::VEN(id) = role {
+                    Some(id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn business_ids(&self) -> (Vec<String>, bool) {
+        let mut allow_any = false;
+        let ids = self
+            .roles
+            .iter()
+            .filter_map(|role| {
+                if let AuthRole::Business(id) = role {
+                    if let Some(id) = id {
+                        Some(id.clone())
+                    } else {
+                        allow_any = true;
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        (ids, allow_any)
+    }
+
+    pub fn is_ven(&self) -> bool {
+        self.roles.iter().any(AuthRole::is_ven)
+    }
+
+    pub fn is_business(&self) -> bool {
+        self.roles.iter().any(AuthRole::is_business)
+    }
+
+    pub fn is_user_manager(&self) -> bool {
+        self.roles.iter().any(AuthRole::is_user_manager)
+    }
 }
 
 impl JwtManager {
@@ -63,8 +126,7 @@ impl JwtManager {
         &self,
         expires_in: std::time::Duration,
         client_id: String,
-        role: AuthRole,
-        ven: Option<String>,
+        roles: Vec<AuthRole>,
     ) -> Result<String, jsonwebtoken::errors::Error> {
         let now = chrono::Utc::now();
         let exp = now + expires_in;
@@ -73,8 +135,7 @@ impl JwtManager {
             exp: exp.timestamp() as usize,
             nbf: now.timestamp() as usize,
             sub: client_id,
-            role,
-            ven,
+            roles,
         };
 
         let token = encode(&Header::default(), &claims, &self.encoding_key)?;
@@ -90,9 +151,17 @@ impl JwtManager {
     }
 }
 
+/// User claims extracted from the request
 pub struct User(pub Claims);
-pub struct BLUser(pub Claims);
-// pub struct VENUser(pub Claims);
+
+/// User claims extracted from the request, with the requirement that the user is a business user
+pub struct BusinessUser(pub Claims);
+
+/// User claims extracted from the request, with the requirement that the user is a VEN user
+pub struct VENUser(pub Claims);
+
+/// User claims extracted from the request, with the requirement that the user is a user manager
+pub struct UserManagerUser(pub Claims);
 
 #[async_trait]
 impl<S: Send + Sync> FromRequestParts<S> for User
@@ -125,36 +194,55 @@ where
 }
 
 #[async_trait]
-impl<S: Send + Sync> FromRequestParts<S> for BLUser
+impl<S: Send + Sync> FromRequestParts<S> for BusinessUser
 where
     Arc<JwtManager>: FromRef<S>,
 {
     type Rejection = AppError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let user = User::from_request_parts(parts, state).await?;
-
-        if user.0.role != AuthRole::BL {
+        let User(user) = User::from_request_parts(parts, state).await?;
+        if !user.is_business() {
             return Err(AppError::Auth(
                 "User does not have the required role".to_string(),
             ));
         }
-
-        Ok(BLUser(user.0))
+        Ok(BusinessUser(user))
     }
 }
 
-// #[async_trait]
-// impl<S: Send + Sync> FromRequestParts<S> for VENUser where Arc<JwtManager>: FromRef<S> {
-//     type Rejection = AppError;
+#[async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for VENUser
+where
+    Arc<JwtManager>: FromRef<S>,
+{
+    type Rejection = AppError;
 
-//     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-//         let user = User::from_request_parts(parts, state).await?;
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let User(user) = User::from_request_parts(parts, state).await?;
+        if !user.is_ven() {
+            return Err(AppError::Auth(
+                "User does not have the required role".to_string(),
+            ));
+        }
+        Ok(VENUser(user))
+    }
+}
 
-//         if user.0.role != AuthRole::VEN {
-//             return Err(AppError::Auth("User does not have the required role".to_string()));
-//         }
+#[async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for UserManagerUser
+where
+    Arc<JwtManager>: FromRef<S>,
+{
+    type Rejection = AppError;
 
-//         Ok(VENUser(user.0))
-//     }
-// }
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let User(user) = User::from_request_parts(parts, state).await?;
+        if !user.is_user_manager() {
+            return Err(AppError::Auth(
+                "User does not have the required role".to_string(),
+            ));
+        }
+        Ok(UserManagerUser(user))
+    }
+}

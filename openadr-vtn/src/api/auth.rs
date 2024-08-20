@@ -127,7 +127,7 @@ pub async fn token(
     };
 
     let expiration = std::time::Duration::from_secs(3600 * 24 * 30);
-    let token = jwt_manager.create(expiration, user.client_id, user.role, user.ven)?;
+    let token = jwt_manager.create(expiration, user.client_id, user.roles)?;
 
     Ok(AccessTokenResponse {
         access_token: token,

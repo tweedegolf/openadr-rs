@@ -24,8 +24,7 @@ async fn main() {
     storage.auth.write().await.push(AuthInfo {
         client_id: "admin".to_string(),
         client_secret: "admin".to_string(),
-        role: AuthRole::BL,
-        ven: None,
+        roles: vec![AuthRole::Business(None), AuthRole::UserManager],
     });
     let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());
 

@@ -20,7 +20,7 @@ use crate::api::{AppResponse, ValidatedQuery};
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
 use crate::error::AppError::NotImplemented;
-use crate::jwt::{BLUser, User};
+use crate::jwt::{BusinessUser, User};
 
 impl EventCrud for RwLock<HashMap<EventId, Event>> {}
 
@@ -105,7 +105,7 @@ pub async fn get(
 
 pub async fn add(
     State(event_source): State<Arc<dyn EventCrud>>,
-    BLUser(_user): BLUser,
+    BusinessUser(_user): BusinessUser,
     Json(new_event): Json<EventContent>,
 ) -> Result<(StatusCode, Json<Event>), AppError> {
     let event = event_source.create(new_event).await?;
@@ -118,7 +118,7 @@ pub async fn add(
 pub async fn edit(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
-    BLUser(_user): BLUser,
+    BusinessUser(_user): BusinessUser,
     Json(content): Json<EventContent>,
 ) -> AppResponse<Event> {
     let event = event_source.update(&id, content).await?;
@@ -131,7 +131,7 @@ pub async fn edit(
 pub async fn delete(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
-    BLUser(_user): BLUser,
+    BusinessUser(_user): BusinessUser,
 ) -> AppResponse<Event> {
     let event = event_source.delete(&id).await?;
     info!(%id, "deleted event");
@@ -219,8 +219,7 @@ mod test {
         store.auth.try_write().unwrap().push(AuthInfo {
             client_id: "admin".to_string(),
             client_secret: "admin".to_string(),
-            role: AuthRole::BL,
-            ven: None,
+            roles: vec![AuthRole::Business(None), AuthRole::UserManager],
         });
 
         {
@@ -239,8 +238,7 @@ mod test {
             .create(
                 std::time::Duration::from_secs(3600),
                 "admin".to_string(),
-                AuthRole::BL,
-                None,
+                vec![AuthRole::Business(None), AuthRole::UserManager],
             )
             .unwrap()
     }
