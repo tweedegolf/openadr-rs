@@ -23,13 +23,14 @@ pub struct JwtManager {
 #[serde(tag = "role", content = "id")]
 pub enum AuthRole {
     UserManager,
-    Business(Option<String>),
+    Business(String),
+    AnyBusiness,
     VEN(String),
 }
 
 impl AuthRole {
     pub fn is_business(&self) -> bool {
-        matches!(self, AuthRole::Business(_))
+        matches!(self, AuthRole::Business(_) | AuthRole::AnyBusiness)
     }
 
     pub fn is_ven(&self) -> bool {
@@ -49,6 +50,11 @@ pub struct Claims {
     pub roles: Vec<AuthRole>,
 }
 
+pub enum BusinessIds {
+    Specific(Vec<String>),
+    Any,
+}
+
 impl Claims {
     pub fn ven_ids(&self) -> Vec<String> {
         self.roles
@@ -63,26 +69,18 @@ impl Claims {
             .collect()
     }
 
-    pub fn business_ids(&self) -> (Vec<String>, bool) {
-        let mut allow_any = false;
-        let ids = self
-            .roles
-            .iter()
-            .filter_map(|role| {
-                if let AuthRole::Business(id) = role {
-                    if let Some(id) = id {
-                        Some(id.clone())
-                    } else {
-                        allow_any = true;
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
+    pub fn business_ids(&self) -> BusinessIds {
+        let mut ids = vec![];
 
-        (ids, allow_any)
+        for role in &self.roles {
+            match role {
+                AuthRole::Business(id) => ids.push(id.clone()),
+                AuthRole::AnyBusiness => return BusinessIds::Any,
+                _ => {}
+            }
+        }
+
+        BusinessIds::Specific(ids)
     }
 
     pub fn is_ven(&self) -> bool {

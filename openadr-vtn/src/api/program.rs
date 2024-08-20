@@ -254,7 +254,7 @@ mod test {
         store.auth.try_write().unwrap().push(AuthInfo {
             client_id: "admin".to_string(),
             client_secret: "admin".to_string(),
-            roles: vec![AuthRole::Business(None), AuthRole::UserManager],
+            roles: vec![AuthRole::AnyBusiness, AuthRole::UserManager],
         });
 
         {
@@ -273,7 +273,7 @@ mod test {
             .create(
                 std::time::Duration::from_secs(3600),
                 "admin".to_string(),
-                vec![AuthRole::Business(None), AuthRole::UserManager],
+                vec![AuthRole::AnyBusiness, AuthRole::UserManager],
             )
             .unwrap()
     }
