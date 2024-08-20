@@ -80,8 +80,7 @@ pub trait DataSource: Send + Sync + 'static {
 pub struct AuthInfo {
     pub client_id: String,
     pub client_secret: String,
-    pub role: AuthRole,
-    pub ven: Option<String>,
+    pub roles: Vec<AuthRole>,
 }
 
 #[derive(Default, Clone)]
