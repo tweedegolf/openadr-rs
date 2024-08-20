@@ -6,13 +6,13 @@ use crate::error::Result;
 use crate::ClientRef;
 
 #[derive(Debug)]
-pub struct ReportClient<C> {
-    client: Arc<C>,
+pub struct ReportClient {
+    client: Arc<ClientRef>,
     data: Report,
 }
 
-impl<C: ClientRef> ReportClient<C> {
-    pub(super) fn from_report(client: Arc<C>, report: Report) -> Self {
+impl ReportClient {
+    pub(super) fn from_report(client: Arc<ClientRef>, report: Report) -> Self {
         Self {
             client,
             data: report,
