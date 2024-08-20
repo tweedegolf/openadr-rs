@@ -31,3 +31,4 @@ uuid.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 openadr-vtn = { path = "../openadr-vtn" }
+mime.workspace = true
