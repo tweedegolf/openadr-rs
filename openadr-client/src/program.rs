@@ -195,7 +195,7 @@ impl ProgramClient {
 
     pub async fn get_timeline(&mut self) -> Result<Timeline> {
         let events = self.get_all_events().await?;
-        let events = events.iter().map(|e| e.data()).collect();
+        let events = events.iter().map(|e| e.content()).collect();
         Timeline::from_events(self.content(), events).ok_or(Error::InvalidInterval)
     }
 }
