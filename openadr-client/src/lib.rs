@@ -5,16 +5,17 @@ mod report;
 mod target;
 mod timeline;
 
+use axum::async_trait;
 use std::{
-    future::Future,
+    fmt::Debug,
     sync::Arc,
     time::{Duration, Instant},
 };
-
 use tokio::sync::RwLock;
 
 use axum::body::Body;
 use http_body_util::BodyExt;
+use reqwest::{Method, RequestBuilder, Response};
 use tower::{Service, ServiceExt};
 use url::Url;
 
@@ -33,11 +34,18 @@ pub(crate) use openadr_wire::{
     Program,
 };
 
+#[async_trait]
+trait HttpClient: Debug {
+    fn request_builder(&self, method: reqwest::Method, url: Url) -> reqwest::RequestBuilder;
+    async fn send(&self, req: reqwest::RequestBuilder) -> reqwest::Result<Response>;
+}
+
 /// Client used for interaction with a VTN.
 ///
 /// Can be used to implement both, the VEN and the business logic
-pub struct Client<T> {
-    client_ref: Arc<T>,
+#[derive(Debug, Clone)]
+pub struct Client {
+    client_ref: Arc<ClientRef>,
 }
 
 pub struct ClientCredentials {
@@ -45,6 +53,19 @@ pub struct ClientCredentials {
     client_secret: String,
     pub refresh_margin: Duration,
     pub default_credential_expires_in: Duration,
+}
+
+impl Debug for ClientCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(std::any::type_name::<Self>())
+            .field("client_id", &self.client_id)
+            .field("refresh_margin", &self.refresh_margin)
+            .field(
+                "default_credential_expires_in",
+                &self.default_credential_expires_in,
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl ClientCredentials {
@@ -56,6 +77,10 @@ impl ClientCredentials {
             default_credential_expires_in: Duration::from_secs(3600),
         }
     }
+
+    pub fn admin() -> Self {
+        Self::new("admin".to_string(), "admin".to_string())
+    }
 }
 
 struct AuthToken {
@@ -64,23 +89,25 @@ struct AuthToken {
     since: Instant,
 }
 
-pub struct ReqwestClientRef {
-    client: reqwest::Client,
+impl Debug for AuthToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(std::any::type_name::<Self>())
+            .field("expires_in", &self.expires_in)
+            .field("since", &self.since)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug)]
+pub struct ClientRef {
+    client: Box<dyn HttpClient + Send + Sync>,
     base_url: url::Url,
     default_page_size: usize,
     auth_data: Option<ClientCredentials>,
     auth_token: RwLock<Option<AuthToken>>,
 }
 
-impl std::fmt::Debug for ReqwestClientRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("ClientRef")
-            .field(&self.base_url.to_string())
-            .finish()
-    }
-}
-
-impl ReqwestClientRef {
+impl ClientRef {
     /// This ensures the client is authenticated.
     ///
     /// We follow the process according to RFC 6749, section 4.4 (client
@@ -112,16 +139,19 @@ impl ReqwestClientRef {
 
         // we should authenticate
         let auth_url = self.base_url.join("auth/token")?;
-        let request = self.client.post(auth_url).form(&AccessTokenRequest {
-            grant_type: "client_credentials",
-            scope: None,
-            client_id: None,
-            client_secret: None,
-        });
+        let request =
+            self.client
+                .request_builder(Method::POST, auth_url)
+                .form(&AccessTokenRequest {
+                    grant_type: "client_credentials",
+                    scope: None,
+                    client_id: None,
+                    client_secret: None,
+                });
         let request = request.basic_auth(&auth_data.client_id, Some(&auth_data.client_secret));
         let request = request.header("Accept", "application/json");
         let since = Instant::now();
-        let res = request.send().await?;
+        let res = self.client.send(request).await?;
         if !res.status().is_success() {
             let problem = res.json::<openadr_wire::oauth::OAuthError>().await?;
             return Err(crate::Error::AuthProblem(problem));
@@ -158,42 +188,7 @@ impl ReqwestClientRef {
         *self.auth_token.write().await = Some(token);
         Ok(())
     }
-}
 
-pub trait ClientRef {
-    fn get<T: serde::de::DeserializeOwned>(
-        &self,
-        path: &str,
-        query: &[(&str, &str)],
-    ) -> impl Future<Output = Result<T>> + Send;
-
-    fn post<S, T>(
-        &self,
-        path: &str,
-        body: &S,
-        query: &[(&str, &str)],
-    ) -> impl Future<Output = Result<T>> + Send
-    where
-        S: serde::ser::Serialize + Sync,
-        T: serde::de::DeserializeOwned;
-
-    fn put<S, T>(
-        &self,
-        path: &str,
-        body: &S,
-        query: &[(&str, &str)],
-    ) -> impl Future<Output = Result<T>> + Send
-    where
-        S: serde::ser::Serialize + Sync,
-        T: serde::de::DeserializeOwned;
-
-    fn delete(&self, path: &str, query: &[(&str, &str)])
-        -> impl Future<Output = Result<()>> + Send;
-
-    fn default_page_size(&self) -> usize;
-}
-
-impl ReqwestClientRef {
     async fn request<T: serde::de::DeserializeOwned>(
         &self,
         mut request: reqwest::RequestBuilder,
@@ -212,7 +207,7 @@ impl ReqwestClientRef {
                 request = request.bearer_auth(&token.token);
             }
         }
-        let res = request.send().await?;
+        let res = self.client.send(request).await?;
 
         // handle any errors returned by the server
         if !res.status().is_success() {
@@ -222,16 +217,14 @@ impl ReqwestClientRef {
 
         Ok(res.json().await?)
     }
-}
 
-impl ClientRef for ReqwestClientRef {
     async fn get<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<T> {
         let url = self.base_url.join(path)?;
-        let request = self.client.get(url);
+        let request = self.client.request_builder(Method::GET, url);
         self.request(request, query).await
     }
 
@@ -241,7 +234,7 @@ impl ClientRef for ReqwestClientRef {
         T: serde::de::DeserializeOwned,
     {
         let url = self.base_url.join(path)?;
-        let request = self.client.post(url).json(body);
+        let request = self.client.request_builder(Method::POST, url).json(body);
         self.request(request, query).await
     }
 
@@ -251,13 +244,13 @@ impl ClientRef for ReqwestClientRef {
         T: serde::de::DeserializeOwned,
     {
         let url = self.base_url.join(path)?;
-        let request = self.client.put(url).json(body);
+        let request = self.client.request_builder(Method::PUT, url).json(body);
         self.request(request, query).await
     }
 
     async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()> {
         let url = self.base_url.join(path)?;
-        let request = self.client.delete(url);
+        let request = self.client.request_builder(Method::DELETE, url);
         self.request(request, query).await
     }
 
@@ -266,44 +259,55 @@ impl ClientRef for ReqwestClientRef {
     }
 }
 
+#[derive(Debug)]
+pub struct ReqwestClientRef {
+    client: reqwest::Client,
+}
+
+#[async_trait]
+impl HttpClient for ReqwestClientRef {
+    fn request_builder(&self, method: reqwest::Method, url: Url) -> RequestBuilder {
+        self.client.request(method, url)
+    }
+
+    async fn send(&self, req: RequestBuilder) -> std::result::Result<Response, reqwest::Error> {
+        req.send().await
+    }
+}
+
+#[derive(Debug)]
 pub struct MockClientRef {
     router: Arc<tokio::sync::Mutex<axum::Router>>,
-    default_page_size: usize,
 }
 
 impl MockClientRef {
     pub fn new(router: axum::Router) -> Self {
         MockClientRef {
             router: Arc::new(tokio::sync::Mutex::new(router)),
-            default_page_size: 50,
         }
     }
 
-    async fn request<T: serde::de::DeserializeOwned>(
-        &self,
-        method: axum::http::Method,
-        path: &str,
-        body: Option<Vec<u8>>,
-        query: &[(&str, &str)],
-    ) -> Result<T> {
-        let mut uri = format!("/{path}?");
-        let mut it = query.iter().peekable();
+    pub fn into_client(self, auth: Option<ClientCredentials>) -> Client {
+        let client = ClientRef {
+            client: Box::new(self),
+            base_url: Url::parse("https://example.com/").unwrap(),
+            default_page_size: 50,
+            auth_data: auth,
+            auth_token: RwLock::new(None),
+        };
 
-        while let Some((key, value)) = it.next() {
-            uri.push_str(key);
-            uri.push('=');
-            uri.push_str(value);
+        Client::new(client)
+    }
+}
 
-            if it.peek().is_some() {
-                uri.push('&');
-            }
-        }
+#[async_trait]
+impl HttpClient for MockClientRef {
+    fn request_builder(&self, method: reqwest::Method, url: Url) -> RequestBuilder {
+        reqwest::Client::new().request(method, url)
+    }
 
-        let request = axum::http::Request::builder()
-            .method(method)
-            .uri(uri)
-            .body(Body::from(body.unwrap_or_default()))
-            .unwrap();
+    async fn send(&self, req: reqwest::RequestBuilder) -> reqwest::Result<reqwest::Response> {
+        let request = axum::http::Request::try_from(req.build().unwrap()).unwrap();
 
         let response =
             ServiceExt::<axum::http::Request<Body>>::ready(&mut *self.router.lock().await)
@@ -313,53 +317,16 @@ impl MockClientRef {
                 .await
                 .unwrap();
 
-        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let (parts, body) = response.into_parts();
+        let body = body.collect().await.unwrap().to_bytes();
+        let body = reqwest::Body::from(body);
+        let response = axum::http::Response::from_parts(parts, body);
 
-        Ok(serde_json::from_slice(&body).unwrap())
+        Ok(response.into())
     }
 }
 
-impl ClientRef for MockClientRef {
-    async fn get<T: serde::de::DeserializeOwned>(
-        &self,
-        path: &str,
-        query: &[(&str, &str)],
-    ) -> Result<T> {
-        self.request(axum::http::Method::GET, path, None, query)
-            .await
-    }
-
-    async fn post<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
-    where
-        S: serde::ser::Serialize + Sync,
-        T: serde::de::DeserializeOwned,
-    {
-        let body = serde_json::to_vec(body)?;
-        self.request(axum::http::Method::POST, path, Some(body), query)
-            .await
-    }
-
-    async fn put<S, T>(&self, path: &str, body: &S, query: &[(&str, &str)]) -> Result<T>
-    where
-        S: serde::ser::Serialize + Sync,
-        T: serde::de::DeserializeOwned,
-    {
-        let body = serde_json::to_vec(body)?;
-        self.request(axum::http::Method::PUT, path, Some(body), query)
-            .await
-    }
-
-    async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()> {
-        self.request(axum::http::Method::DELETE, path, None, query)
-            .await
-    }
-
-    fn default_page_size(&self) -> usize {
-        self.default_page_size
-    }
-}
-
-impl Client<ReqwestClientRef> {
+impl Client {
     /// Create a new client for a VTN located at the specified URL
     pub fn with_url(base_url: Url, auth: Option<ClientCredentials>) -> Self {
         let client = reqwest::Client::new();
@@ -373,8 +340,8 @@ impl Client<ReqwestClientRef> {
         client: reqwest::Client,
         auth: Option<ClientCredentials>,
     ) -> Self {
-        let client_ref = ReqwestClientRef {
-            client,
+        let client_ref = ClientRef {
+            client: Box::new(ReqwestClientRef { client }),
             base_url,
             default_page_size: 50,
             auth_data: auth,
@@ -383,17 +350,15 @@ impl Client<ReqwestClientRef> {
 
         Self::new(client_ref)
     }
-}
 
-impl<C: ClientRef> Client<C> {
-    pub fn new(client_ref: C) -> Self {
+    fn new(client_ref: ClientRef) -> Self {
         Client {
             client_ref: Arc::new(client_ref),
         }
     }
 
     /// Create a new program on the VTN
-    pub async fn create_program(&self, program_data: ProgramContent) -> Result<ProgramClient<C>> {
+    pub async fn create_program(&self, program_data: ProgramContent) -> Result<ProgramClient> {
         let program = self.client_ref.post("programs", &program_data, &[]).await?;
         Ok(ProgramClient::from_program(
             self.client_ref.clone(),
@@ -408,7 +373,7 @@ impl<C: ClientRef> Client<C> {
         targets: &[&str],
         skip: usize,
         limit: usize,
-    ) -> Result<Vec<ProgramClient<C>>> {
+    ) -> Result<Vec<ProgramClient>> {
         // convert query params
         let target_type_str = target_type.map(|t| t.to_string());
         let skip_str = skip.to_string();
@@ -434,7 +399,7 @@ impl<C: ClientRef> Client<C> {
     }
 
     /// Get a single program from the VTN that matches the given target
-    pub async fn get_program(&self, target: Target<'_>) -> Result<ProgramClient<C>> {
+    pub async fn get_program(&self, target: Target<'_>) -> Result<ProgramClient> {
         let mut programs = self
             .get_programs_req(Some(target.target_label()), target.target_values(), 0, 2)
             .await?;
@@ -447,7 +412,7 @@ impl<C: ClientRef> Client<C> {
     }
 
     /// Get a list of programs from the VTN with the given query parameters
-    pub async fn get_program_list(&self, target: Target<'_>) -> Result<Vec<ProgramClient<C>>> {
+    pub async fn get_program_list(&self, target: Target<'_>) -> Result<Vec<ProgramClient>> {
         let page_size = self.client_ref.default_page_size();
         let mut programs = vec![];
         let mut page = 0;
@@ -476,7 +441,7 @@ impl<C: ClientRef> Client<C> {
     }
 
     /// Get all programs from the VTN, trying to paginate whenever possible
-    pub async fn get_all_programs(&self) -> Result<Vec<ProgramClient<C>>> {
+    pub async fn get_all_programs(&self) -> Result<Vec<ProgramClient>> {
         let page_size = self.client_ref.default_page_size();
         let mut programs = vec![];
         let mut page = 0;
@@ -501,12 +466,12 @@ impl<C: ClientRef> Client<C> {
     }
 
     /// Get a program by name
-    pub async fn get_program_by_name(&self, name: &str) -> Result<ProgramClient<C>> {
+    pub async fn get_program_by_name(&self, name: &str) -> Result<ProgramClient> {
         self.get_program(Target::Program(name)).await
     }
 
     /// Get a program by id
-    pub async fn get_program_by_id(&self, id: &ProgramId) -> Result<ProgramClient<C>> {
+    pub async fn get_program_by_id(&self, id: &ProgramId) -> Result<ProgramClient> {
         let program = self
             .client_ref
             .get(&format!("programs/{}", id.as_str()), &[])

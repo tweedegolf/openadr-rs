@@ -251,11 +251,7 @@ mod test {
     fn state_with_programs(programs: Vec<Program>) -> AppState {
         let store = InMemoryStorage::default();
 
-        store.auth.try_write().unwrap().push(AuthInfo {
-            client_id: "admin".to_string(),
-            client_secret: "admin".to_string(),
-            roles: vec![AuthRole::AnyBusiness, AuthRole::UserManager],
-        });
+        store.auth.try_write().unwrap().push(AuthInfo::bl_admin());
 
         {
             let mut writer = store.programs.try_write().unwrap();

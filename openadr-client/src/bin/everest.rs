@@ -4,7 +4,7 @@ use openadr_wire::{
     values_map::Value,
 };
 
-use openadr_client::{ClientRef, ProgramClient, Target, Timeline};
+use openadr_client::{ProgramClient, Target, Timeline};
 use std::{error::Error, time::Duration};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::{select, sync::mpsc};
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn poll_timeline(
-    mut program: ProgramClient<impl ClientRef>,
+    mut program: ProgramClient,
     poll_interval: std::time::Duration,
     sender: mpsc::Sender<Timeline>,
 ) -> Result<(), openadr_client::Error> {
