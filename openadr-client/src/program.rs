@@ -33,23 +33,23 @@ impl ProgramClient {
     }
 
     /// Get the time the program was created on the VTN
-    pub fn created_date_time(&self) -> &chrono::DateTime<chrono::Utc> {
-        &self.data.created_date_time
+    pub fn created_date_time(&self) -> chrono::DateTime<chrono::Utc> {
+        self.data.created_date_time
     }
 
     /// Get the time the program was last modified on the VTN
-    pub fn modification_date_time(&self) -> &chrono::DateTime<chrono::Utc> {
-        &self.data.modification_date_time
+    pub fn modification_date_time(&self) -> chrono::DateTime<chrono::Utc> {
+        self.data.modification_date_time
     }
 
     /// Read the data of the program
-    pub fn data(&self) -> &ProgramContent {
+    pub fn content(&self) -> &ProgramContent {
         &self.data.content
     }
 
     /// Modify the data of the program, make sure to update the program on the
     /// VTN once your modifications are complete.
-    pub fn data_mut(&mut self) -> &mut ProgramContent {
+    pub fn content_mut(&mut self) -> &mut ProgramContent {
         &mut self.data.content
     }
 
@@ -64,7 +64,7 @@ impl ProgramClient {
     }
 
     /// Delete the program from the VTN
-    pub async fn delete(self) -> Result<()> {
+    pub async fn delete(self) -> Result<Program> {
         self.client
             .delete(&format!("programs/{}", self.id()), &[])
             .await
@@ -196,6 +196,6 @@ impl ProgramClient {
     pub async fn get_timeline(&mut self) -> Result<Timeline> {
         let events = self.get_all_events().await?;
         let events = events.iter().map(|e| e.data()).collect();
-        Timeline::from_events(self.data(), events).ok_or(Error::InvalidInterval)
+        Timeline::from_events(self.content(), events).ok_or(Error::InvalidInterval)
     }
 }

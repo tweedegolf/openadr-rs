@@ -248,7 +248,10 @@ impl ClientRef {
         self.request(request, query).await
     }
 
-    async fn delete(&self, path: &str, query: &[(&str, &str)]) -> Result<()> {
+    async fn delete<T>(&self, path: &str, query: &[(&str, &str)]) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
         let url = self.base_url.join(path)?;
         let request = self.client.request_builder(Method::DELETE, url);
         self.request(request, query).await
@@ -326,6 +329,11 @@ impl HttpClient for MockClientRef {
     }
 }
 
+pub struct PaginationOptions {
+    pub skip: usize,
+    pub limit: usize,
+}
+
 impl Client {
     /// Create a new client for a VTN located at the specified URL
     pub fn with_url(base_url: Url, auth: Option<ClientCredentials>) -> Self {
@@ -367,17 +375,16 @@ impl Client {
     }
 
     /// Get a list of programs from the VTN with the given query parameters
-    async fn get_programs_req(
+    pub async fn get_programs_request(
         &self,
         target_type: Option<TargetLabel>,
         targets: &[&str],
-        skip: usize,
-        limit: usize,
+        pagination: PaginationOptions,
     ) -> Result<Vec<ProgramClient>> {
         // convert query params
         let target_type_str = target_type.map(|t| t.to_string());
-        let skip_str = skip.to_string();
-        let limit_str = limit.to_string();
+        let skip_str = pagination.skip.to_string();
+        let limit_str = pagination.limit.to_string();
 
         // insert into query params
         let mut query = vec![];
@@ -400,8 +407,14 @@ impl Client {
 
     /// Get a single program from the VTN that matches the given target
     pub async fn get_program(&self, target: Target<'_>) -> Result<ProgramClient> {
+        let pagination = PaginationOptions { skip: 0, limit: 2 };
+
         let mut programs = self
-            .get_programs_req(Some(target.target_label()), target.target_values(), 0, 2)
+            .get_programs_request(
+                Some(target.target_label()),
+                target.target_values(),
+                pagination,
+            )
             .await?;
 
         match programs[..] {
@@ -417,12 +430,16 @@ impl Client {
         let mut programs = vec![];
         let mut page = 0;
         loop {
+            let pagination = PaginationOptions {
+                skip: page * page_size,
+                limit: page_size,
+            };
+
             let received = self
-                .get_programs_req(
+                .get_programs_request(
                     Some(target.target_label()),
                     target.target_values(),
-                    page * page_size,
-                    page_size,
+                    pagination,
                 )
                 .await?;
             let received_all = received.len() < page_size;
@@ -447,9 +464,12 @@ impl Client {
         let mut page = 0;
         loop {
             // TODO: this pagination should really depend on that the server indicated there are more results
-            let received = self
-                .get_programs_req(None, &[], page * page_size, page_size)
-                .await?;
+            let pagination = PaginationOptions {
+                skip: page * page_size,
+                limit: page_size,
+            };
+
+            let received = self.get_programs_request(None, &[], pagination).await?;
             let received_all = received.len() < page_size;
             for program in received {
                 programs.push(program);
