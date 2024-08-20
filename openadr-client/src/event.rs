@@ -28,19 +28,19 @@ impl EventClient {
         &self.data.id
     }
 
-    pub fn created_date_time(&self) -> &chrono::DateTime<chrono::Utc> {
-        &self.data.created_date_time
+    pub fn created_date_time(&self) -> chrono::DateTime<chrono::Utc> {
+        self.data.created_date_time
     }
 
-    pub fn modification_date_time(&self) -> &chrono::DateTime<chrono::Utc> {
-        &self.data.modification_date_time
+    pub fn modification_date_time(&self) -> chrono::DateTime<chrono::Utc> {
+        self.data.modification_date_time
     }
 
-    pub fn data(&self) -> &EventContent {
+    pub fn content(&self) -> &EventContent {
         &self.data.content
     }
 
-    pub fn data_mut(&mut self) -> &mut EventContent {
+    pub fn content_mut(&mut self) -> &mut EventContent {
         &mut self.data.content
     }
 
@@ -55,7 +55,7 @@ impl EventClient {
     }
 
     /// Delete the event from the VTN
-    pub async fn delete(self) -> Result<()> {
+    pub async fn delete(self) -> Result<Event> {
         self.client
             .delete(&format!("events/{}", self.id()), &[])
             .await
@@ -65,7 +65,7 @@ impl EventClient {
     pub fn new_report(&self) -> ReportContent {
         ReportContent {
             object_type: Some(ReportObjectType::Report),
-            program_id: self.data().program_id.clone(),
+            program_id: self.content().program_id.clone(),
             event_id: self.id().clone(),
             client_name: "".to_string(),
             report_name: None,
@@ -76,7 +76,7 @@ impl EventClient {
 
     /// Create a new report for the event
     pub async fn create_report(&self, report_data: ReportContent) -> Result<ReportClient> {
-        if report_data.program_id != self.data().program_id {
+        if report_data.program_id != self.content().program_id {
             return Err(Error::InvalidParentObject);
         }
 
@@ -98,7 +98,7 @@ impl EventClient {
         let limit_str = limit.to_string();
 
         let mut query = vec![
-            ("programID", self.data().program_id.as_str()),
+            ("programID", self.content().program_id.as_str()),
             ("eventID", self.id().as_str()),
             ("skip", &skip_str),
             ("limit", &limit_str),

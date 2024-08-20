@@ -6,6 +6,7 @@ mod target;
 mod timeline;
 
 use axum::async_trait;
+use openadr_wire::{event::EventId, Event};
 use std::{
     fmt::Debug,
     sync::Arc,
@@ -501,5 +502,137 @@ impl Client {
             self.client_ref.clone(),
             program,
         ))
+    }
+
+    /// Create a new event on the VTN
+    pub async fn create_event(&self, event_data: EventContent) -> Result<EventClient> {
+        let event = self.client_ref.post("events", &event_data, &[]).await?;
+        Ok(EventClient::from_event(self.client_ref.clone(), event))
+    }
+
+    /// Get a list of events from the VTN with the given query parameters
+    pub async fn get_events_request(
+        &self,
+        target_type: Option<TargetLabel>,
+        targets: &[&str],
+        pagination: PaginationOptions,
+    ) -> Result<Vec<EventClient>> {
+        // convert query params
+        let target_type_str = target_type.map(|t| t.to_string());
+        let skip_str = pagination.skip.to_string();
+        let limit_str = pagination.limit.to_string();
+
+        // insert into query params
+        let mut query = vec![];
+        if let Some(target_type_ref) = &target_type_str {
+            for target in targets {
+                query.push(("targetValues", *target));
+            }
+            query.push(("targetType", target_type_ref.as_str()));
+        }
+        query.push(("skip", &skip_str));
+        query.push(("limit", &limit_str));
+
+        // send request and return response
+        let events: Vec<Event> = self.client_ref.get("events", &query).await?;
+        Ok(events
+            .into_iter()
+            .map(|event| EventClient::from_event(self.client_ref.clone(), event))
+            .collect())
+    }
+
+    /// Get a single event from the VTN that matches the given target
+    pub async fn get_event(&self, target: Target<'_>) -> Result<EventClient> {
+        let pagination = PaginationOptions { skip: 0, limit: 2 };
+
+        let mut events = self
+            .get_events_request(
+                Some(target.target_label()),
+                target.target_values(),
+                pagination,
+            )
+            .await?;
+
+        match events[..] {
+            [] => Err(crate::Error::ObjectNotFound),
+            [_] => Ok(events.remove(0)),
+            [..] => Err(crate::Error::DuplicateObject),
+        }
+    }
+
+    /// Get a list of events from the VTN with the given query parameters
+    pub async fn get_event_list(&self, target: Target<'_>) -> Result<Vec<EventClient>> {
+        let page_size = self.client_ref.default_page_size();
+        let mut events = vec![];
+        let mut page = 0;
+        loop {
+            let pagination = PaginationOptions {
+                skip: page * page_size,
+                limit: page_size,
+            };
+
+            let received = self
+                .get_events_request(
+                    Some(target.target_label()),
+                    target.target_values(),
+                    pagination,
+                )
+                .await?;
+            let received_all = received.len() < page_size;
+            for event in received {
+                events.push(event);
+            }
+
+            if received_all {
+                break;
+            } else {
+                page += 1;
+            }
+        }
+
+        Ok(events)
+    }
+
+    /// Get all events from the VTN, trying to paginate whenever possible
+    pub async fn get_all_events(&self) -> Result<Vec<EventClient>> {
+        let page_size = self.client_ref.default_page_size();
+        let mut events = vec![];
+        let mut page = 0;
+        loop {
+            // TODO: this pagination should really depend on that the server indicated there are more results
+            let pagination = PaginationOptions {
+                skip: page * page_size,
+                limit: page_size,
+            };
+
+            let received = self.get_events_request(None, &[], pagination).await?;
+            let received_all = received.len() < page_size;
+            for event in received {
+                events.push(event);
+            }
+
+            if received_all {
+                break;
+            } else {
+                page += 1;
+            }
+        }
+
+        Ok(events)
+    }
+
+    /// Get a event by name
+    pub async fn get_event_by_name(&self, name: &str) -> Result<EventClient> {
+        self.get_event(Target::Event(name)).await
+    }
+
+    /// Get a event by id
+    pub async fn get_event_by_id(&self, id: &EventId) -> Result<EventClient> {
+        let event = self
+            .client_ref
+            .get(&format!("events/{}", id.as_str()), &[])
+            .await?;
+
+        Ok(EventClient::from_event(self.client_ref.clone(), event))
     }
 }
