@@ -10,25 +10,19 @@ mod helper {
     pub fn setup_mock_client() -> Client {
         use openadr_vtn::{data_source::InMemoryStorage, jwt::JwtManager, state::AppState};
 
+        let auth_info = AuthInfo::bl_admin();
+        let client_credentials = ClientCredentials::admin();
+
         let storage = InMemoryStorage::default();
-        storage.auth.try_write().unwrap().push(AuthInfo {
-            client_id: "admin".into(),
-            client_secret: "admin".into(),
-            role: openadr_vtn::jwt::AuthRole::BL,
-            ven: None,
-        });
+        storage.auth.try_write().unwrap().push(auth_info);
 
         let app_state = AppState::new(storage, JwtManager::from_secret(b"test"));
 
-        MockClientRef::new(app_state.into_router())
-            .into_client(Some(ClientCredentials::new("admin".into(), "admin".into())))
+        MockClientRef::new(app_state.into_router()).into_client(Some(client_credentials))
     }
 
     pub fn setup_url_client(url: Url) -> Client {
-        Client::with_url(
-            url,
-            Some(ClientCredentials::new("admin".into(), "admin".into())),
-        )
+        Client::with_url(url, Some(ClientCredentials::admin()))
     }
 
     pub fn setup_client() -> Client {

@@ -83,6 +83,16 @@ pub struct AuthInfo {
     pub roles: Vec<AuthRole>,
 }
 
+impl AuthInfo {
+    pub fn bl_admin() -> Self {
+        Self {
+            client_id: "admin".to_string(),
+            client_secret: "admin".to_string(),
+            roles: vec![AuthRole::AnyBusiness, AuthRole::UserManager],
+        }
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct InMemoryStorage {
     pub programs: Arc<RwLock<HashMap<ProgramId, Program>>>,

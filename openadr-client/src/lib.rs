@@ -77,6 +77,10 @@ impl ClientCredentials {
             default_credential_expires_in: Duration::from_secs(3600),
         }
     }
+
+    pub fn admin() -> Self {
+        Self::new("admin".to_string(), "admin".to_string())
+    }
 }
 
 struct AuthToken {

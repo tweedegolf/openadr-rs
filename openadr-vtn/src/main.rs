@@ -6,7 +6,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
 use openadr_vtn::data_source::{AuthInfo, InMemoryStorage};
-use openadr_vtn::jwt::{AuthRole, JwtManager};
+use openadr_vtn::jwt::JwtManager;
 use openadr_vtn::state::AppState;
 
 #[tokio::main]
@@ -21,11 +21,7 @@ async fn main() {
     info!("listening on http://{}", listener.local_addr().unwrap());
 
     let storage = InMemoryStorage::default();
-    storage.auth.write().await.push(AuthInfo {
-        client_id: "admin".to_string(),
-        client_secret: "admin".to_string(),
-        roles: vec![AuthRole::AnyBusiness, AuthRole::UserManager],
-    });
+    storage.auth.write().await.push(AuthInfo::bl_admin());
     let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());
 
     if let Err(e) = axum::serve(listener, state.into_router())
