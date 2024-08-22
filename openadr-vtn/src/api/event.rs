@@ -160,8 +160,12 @@ fn get_50() -> u32 {
 impl QueryParams {
     pub fn matches(&self, event: &Event) -> Result<bool, AppError> {
         if let Some(program_id) = &self.program_id {
-            Ok(&event.content.program_id == program_id)
-        } else if let Some(target_type) = self.target_type.as_ref() {
+            if &event.content.program_id != program_id {
+                return Ok(false);
+            }
+        }
+
+        if let Some(target_type) = self.target_type.as_ref() {
             match target_type {
                 TargetLabel::EventName => {
                     let Some(ref event_name) = event.content.event_name else {

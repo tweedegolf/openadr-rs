@@ -113,7 +113,7 @@ async fn update_same_name() {
 
     // duplicate event names are fine
     *event2.content_mut() = content;
-    let _ = event2.update().await.unwrap();
+    event2.update().await.unwrap();
 
     assert!(event2.modification_date_time() > creation_date_time);
 }
