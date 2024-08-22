@@ -161,10 +161,23 @@ impl QueryParams {
     pub fn matches(&self, event: &Event) -> Result<bool, AppError> {
         if let Some(program_id) = &self.program_id {
             Ok(&event.content.program_id == program_id)
-        } else if self.target_type.is_some() || self.target_values.is_some() {
-            Err(NotImplemented(
-                "Filtering by target_type and target_values is not supported",
-            ))
+        } else if let Some(target_type) = self.target_type.as_ref() {
+            match target_type {
+                TargetLabel::EventName => {
+                    let Some(ref event_name) = event.content.event_name else {
+                        return Ok(false);
+                    };
+
+                    let Some(target_values) = &self.target_values else {
+                        return Err(AppError::BadRequest(
+                            "If targetType is specified, targetValues must be specified as well",
+                        ));
+                    };
+
+                    Ok(target_values.iter().any(|name| name == event_name))
+                }
+                _ => Err(NotImplemented("only filtering by event name is supported")),
+            }
         } else {
             Ok(true)
         }
