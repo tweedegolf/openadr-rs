@@ -32,7 +32,6 @@ async fn get() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn delete() {
     let client = common::setup_client();
 
