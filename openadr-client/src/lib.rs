@@ -541,25 +541,6 @@ impl Client {
             .collect())
     }
 
-    /// Get a single event from the VTN that matches the given target
-    pub async fn get_event(&self, target: Target<'_>) -> Result<EventClient> {
-        let pagination = PaginationOptions { skip: 0, limit: 2 };
-
-        let mut events = self
-            .get_events_request(
-                Some(target.target_label()),
-                target.target_values(),
-                pagination,
-            )
-            .await?;
-
-        match events[..] {
-            [] => Err(crate::Error::ObjectNotFound),
-            [_] => Ok(events.remove(0)),
-            [..] => Err(crate::Error::DuplicateObject),
-        }
-    }
-
     /// Get a list of events from the VTN with the given query parameters
     pub async fn get_event_list(&self, target: Target<'_>) -> Result<Vec<EventClient>> {
         let page_size = self.client_ref.default_page_size();
@@ -619,11 +600,6 @@ impl Client {
         }
 
         Ok(events)
-    }
-
-    /// Get a event by name
-    pub async fn get_event_by_name(&self, name: &str) -> Result<EventClient> {
-        self.get_event(Target::Event(name)).await
     }
 
     /// Get a event by id
