@@ -52,7 +52,13 @@ async fn delete() {
         client.create_event(content).await.unwrap();
     }
 
-    let event = client.get_event_by_name("event2").await.unwrap();
+    let pagination = PaginationOptions { skip: 0, limit: 2 };
+    let mut events = client
+        .get_events_request(Some(TargetLabel::EventName), &["event2"], pagination)
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    let event = events.pop().unwrap();
     assert_eq!(event.content(), &event2);
 
     let removed = event.delete().await.unwrap();
