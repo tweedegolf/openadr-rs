@@ -335,6 +335,11 @@ pub struct PaginationOptions {
     pub limit: usize,
 }
 
+pub enum Filter<'a> {
+    None,
+    By(TargetLabel, &'a [&'a str]),
+}
+
 impl Client {
     /// Create a new client for a VTN located at the specified URL
     pub fn with_url(base_url: Url, auth: Option<ClientCredentials>) -> Self {
@@ -367,12 +372,12 @@ impl Client {
     }
 
     /// Create a new program on the VTN
-    pub async fn create_program(&self, program_data: ProgramContent) -> Result<ProgramClient> {
-        let program = self.client_ref.post("programs", &program_data, &[]).await?;
-        Ok(ProgramClient::from_program(
-            self.client_ref.clone(),
-            program,
-        ))
+    pub async fn create_program(&self, program_content: ProgramContent) -> Result<ProgramClient> {
+        let program = self
+            .client_ref
+            .post("programs", &program_content, &[])
+            .await?;
+        Ok(ProgramClient::from_program(self.clone(), program))
     }
 
     /// Get a list of programs from the VTN with the given query parameters
@@ -402,7 +407,7 @@ impl Client {
         let programs: Vec<Program> = self.client_ref.get("programs", &query).await?;
         Ok(programs
             .into_iter()
-            .map(|program| ProgramClient::from_program(self.client_ref.clone(), program))
+            .map(|program| ProgramClient::from_program(self.clone(), program))
             .collect())
     }
 
@@ -498,10 +503,7 @@ impl Client {
             .get(&format!("programs/{}", id.as_str()), &[])
             .await?;
 
-        Ok(ProgramClient::from_program(
-            self.client_ref.clone(),
-            program,
-        ))
+        Ok(ProgramClient::from_program(self.clone(), program))
     }
 
     /// Create a new event on the VTN
@@ -513,23 +515,27 @@ impl Client {
     /// Get a list of events from the VTN with the given query parameters
     pub async fn get_events_request(
         &self,
-        target_type: Option<TargetLabel>,
-        targets: &[&str],
+        program_id: Option<&ProgramId>,
+        filter: Filter<'_>,
         pagination: PaginationOptions,
     ) -> Result<Vec<EventClient>> {
-        // convert query params
-        let target_type_str = target_type.map(|t| t.to_string());
+        let mut query = vec![];
+
+        if let Filter::By(ref target_label, target_values) = filter {
+            query.push(("targetType", target_label.as_str()));
+
+            for target_value in target_values {
+                query.push(("targetValues", *target_value));
+            }
+        }
+
+        if let Some(program_id) = program_id {
+            query.push(("programID", program_id.as_str()));
+        }
+
         let skip_str = pagination.skip.to_string();
         let limit_str = pagination.limit.to_string();
 
-        // insert into query params
-        let mut query = vec![];
-        if let Some(target_type_ref) = &target_type_str {
-            for target in targets {
-                query.push(("targetValues", *target));
-            }
-            query.push(("targetType", target_type_ref.as_str()));
-        }
         query.push(("skip", &skip_str));
         query.push(("limit", &limit_str));
 
@@ -542,7 +548,11 @@ impl Client {
     }
 
     /// Get a list of events from the VTN with the given query parameters
-    pub async fn get_event_list(&self, target: Target<'_>) -> Result<Vec<EventClient>> {
+    pub async fn get_event_list(
+        &self,
+        program_id: Option<&ProgramId>,
+        target: Target<'_>,
+    ) -> Result<Vec<EventClient>> {
         let page_size = self.client_ref.default_page_size();
         let mut events = vec![];
         let mut page = 0;
@@ -554,8 +564,8 @@ impl Client {
 
             let received = self
                 .get_events_request(
-                    Some(target.target_label()),
-                    target.target_values(),
+                    program_id,
+                    Filter::By(target.target_label(), target.target_values()),
                     pagination,
                 )
                 .await?;
@@ -586,7 +596,9 @@ impl Client {
                 limit: page_size,
             };
 
-            let received = self.get_events_request(None, &[], pagination).await?;
+            let received = self
+                .get_events_request(None, Filter::None, pagination)
+                .await?;
             let received_all = received.len() < page_size;
             for event in received {
                 events.push(event);

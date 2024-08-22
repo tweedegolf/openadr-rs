@@ -1,7 +1,8 @@
 use std::env::VarError;
 
-use openadr_client::{Client, ClientCredentials, MockClientRef};
+use openadr_client::{Client, ClientCredentials, MockClientRef, ProgramClient};
 use openadr_vtn::data_source::AuthInfo;
+use openadr_wire::program::ProgramContent;
 use url::Url;
 
 pub fn setup_mock_client() -> Client {
@@ -31,4 +32,29 @@ pub fn setup_client() -> Client {
         Err(VarError::NotPresent) => setup_mock_client(),
         Err(VarError::NotUnicode(e)) => panic!("Could not parse URL: {e:?}"),
     }
+}
+
+#[allow(unused)]
+pub async fn setup_program_client(program_name: impl ToString) -> ProgramClient {
+    let client = setup_client();
+
+    let program_content = ProgramContent {
+        object_type: None,
+        program_name: program_name.to_string(),
+        program_long_name: Some("program_long_name".to_string()),
+        retailer_name: Some("retailer_name".to_string()),
+        retailer_long_name: Some("retailer_long_name".to_string()),
+        program_type: None,
+        country: None,
+        principal_subdivision: None,
+        time_zone_offset: None,
+        interval_period: None,
+        program_descriptions: None,
+        binding_events: None,
+        local_price: None,
+        payload_descriptors: None,
+        targets: None,
+    };
+
+    client.create_program(program_content).await.unwrap()
 }

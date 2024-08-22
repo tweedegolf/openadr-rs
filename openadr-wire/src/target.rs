@@ -39,18 +39,24 @@ pub enum TargetLabel {
     Private(String),
 }
 
+impl TargetLabel {
+    pub fn as_str(&self) -> &str {
+        match self {
+            TargetLabel::PowerServiceLocation => "POWER_SERVICE_LOCATION",
+            TargetLabel::ServiceArea => "SERVICE_AREA",
+            TargetLabel::Group => "GROUP",
+            TargetLabel::ResourceName => "RESOURCE_NAME",
+            TargetLabel::VENName => "VEN_NAME",
+            TargetLabel::EventName => "EVENT_NAME",
+            TargetLabel::ProgramName => "PROGRAM_NAME",
+            TargetLabel::Private(s) => s.as_str(),
+        }
+    }
+}
+
 impl Display for TargetLabel {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TargetLabel::PowerServiceLocation => write!(f, "POWER_SERVICE_LOCATION"),
-            TargetLabel::ServiceArea => write!(f, "SERVICE_AREA"),
-            TargetLabel::Group => write!(f, "GROUP"),
-            TargetLabel::ResourceName => write!(f, "RESOURCE_NAME"),
-            TargetLabel::VENName => write!(f, "VEN_NAME"),
-            TargetLabel::EventName => write!(f, "EVENT_NAME"),
-            TargetLabel::ProgramName => write!(f, "PROGRAM_NAME"),
-            TargetLabel::Private(s) => write!(f, "{}", s),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 
