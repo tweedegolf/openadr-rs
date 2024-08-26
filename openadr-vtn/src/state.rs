@@ -1,8 +1,7 @@
-use axum::extract::FromRef;
-use std::sync::Arc;
-
 use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
 use crate::jwt::JwtManager;
+use axum::extract::FromRef;
+use std::sync::Arc;
 
 #[derive(Clone, FromRef)]
 pub struct AppState {

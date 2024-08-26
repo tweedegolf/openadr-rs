@@ -1,4 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
+mod memory;
+#[cfg(feature = "postgres")]
+mod postgres;
 
 use axum::async_trait;
 use openadr_wire::{
@@ -7,8 +9,10 @@ use openadr_wire::{
     report::{ReportContent, ReportId},
     Event, Program, Report,
 };
-use thiserror::Error;
+use std::sync::Arc;
 use tokio::sync::RwLock;
+
+pub use memory::InMemoryStorage;
 
 use crate::{error::AppError, jwt::AuthRole};
 
@@ -58,12 +62,6 @@ pub trait EventCrud:
 {
 }
 
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("{0}")]
-    Json(#[from] serde_json::Error),
-}
-
 #[async_trait]
 pub trait AuthSource: Send + Sync + 'static {
     async fn get_user(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo>;
@@ -90,32 +88,6 @@ impl AuthInfo {
             client_secret: "admin".to_string(),
             roles: vec![AuthRole::AnyBusiness, AuthRole::UserManager],
         }
-    }
-}
-
-#[derive(Default, Clone)]
-pub struct InMemoryStorage {
-    pub programs: Arc<RwLock<HashMap<ProgramId, Program>>>,
-    pub reports: Arc<RwLock<HashMap<ReportId, Report>>>,
-    pub events: Arc<RwLock<HashMap<EventId, Event>>>,
-    pub auth: Arc<RwLock<Vec<AuthInfo>>>,
-}
-
-impl DataSource for InMemoryStorage {
-    fn programs(&self) -> Arc<dyn ProgramCrud> {
-        self.programs.clone()
-    }
-
-    fn reports(&self) -> Arc<dyn ReportCrud> {
-        self.reports.clone()
-    }
-
-    fn events(&self) -> Arc<dyn EventCrud> {
-        self.events.clone()
-    }
-
-    fn auth(&self) -> Arc<dyn AuthSource> {
-        self.auth.clone()
     }
 }
 

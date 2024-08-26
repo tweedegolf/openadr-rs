@@ -6,12 +6,11 @@
 
 use std::fmt::Display;
 
-use serde::de::Unexpected;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
 pub use event::Event;
 pub use program::Program;
 pub use report::Report;
+use serde::de::Unexpected;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub mod event;
 pub mod interval;
@@ -39,12 +38,12 @@ mod serde_rfc3339 {
     where
         D: Deserializer<'de>,
     {
-        let rfc_str = <&str as Deserialize>::deserialize(deserializer)?;
+        let rfc_str = <String as Deserialize>::deserialize(deserializer)?;
 
-        match DateTime::parse_from_rfc3339(rfc_str) {
+        match DateTime::parse_from_rfc3339(&rfc_str) {
             Ok(datetime) => Ok(datetime.into()),
             Err(_) => Err(serde::de::Error::invalid_value(
-                Unexpected::Str(rfc_str),
+                Unexpected::Str(&rfc_str),
                 &"Invalid RFC3339 string",
             )),
         }
@@ -57,14 +56,14 @@ pub fn string_within_range_inclusive<'de, const MIN: usize, const MAX: usize, D>
 where
     D: Deserializer<'de>,
 {
-    let borrowed_str = <&str as Deserialize>::deserialize(deserializer)?;
-    let len = borrowed_str.len();
+    let string = <String as Deserialize>::deserialize(deserializer)?;
+    let len = string.len();
 
     if (MIN..=MAX).contains(&len) {
-        Ok(borrowed_str.to_string())
+        Ok(string.to_string())
     } else {
         Err(serde::de::Error::invalid_value(
-            Unexpected::Str(borrowed_str),
+            Unexpected::Str(&string),
             &IdentifierError::InvalidLength(len).to_string().as_str(),
         ))
     }

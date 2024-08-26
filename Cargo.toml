@@ -52,3 +52,5 @@ jsonwebtoken = "9.3.0"
 async-trait = "0.1.81"
 
 quickcheck = "1.0.3"
+
+sqlx = { version = "0.8.1", features = ["runtime-tokio", "chrono", "migrate"] }

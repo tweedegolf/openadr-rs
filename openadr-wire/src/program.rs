@@ -1,17 +1,17 @@
 //! Types used for the `program/` endpoint
 
-use std::fmt::Display;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use std::fmt::Display;
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::event::EventPayloadDescriptor;
 use crate::interval::IntervalPeriod;
 use crate::report::ReportPayloadDescriptor;
 use crate::target::TargetMap;
-use crate::Duration;
+use crate::{Duration, IdentifierError};
 
 use super::Identifier;
 
@@ -134,6 +134,14 @@ impl ProgramId {
 
     pub fn new(identifier: &str) -> Option<Self> {
         Some(Self(identifier.parse().ok()?))
+    }
+}
+
+impl FromStr for ProgramId {
+    type Err = IdentifierError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.parse()?))
     }
 }
 

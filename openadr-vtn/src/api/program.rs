@@ -1,13 +1,10 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::{async_trait, Json};
-use chrono::Utc;
+use axum::Json;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use tokio::sync::RwLock;
-use tracing::{info, trace, warn};
+use tracing::{info, trace};
 use validator::Validate;
 
 use openadr_wire::program::{ProgramContent, ProgramId};
@@ -15,99 +12,9 @@ use openadr_wire::target::TargetLabel;
 use openadr_wire::Program;
 
 use crate::api::{AppResponse, ValidatedQuery};
-use crate::data_source::{Crud, ProgramCrud};
+use crate::data_source::ProgramCrud;
 use crate::error::AppError;
 use crate::jwt::{BusinessUser, User};
-
-impl ProgramCrud for RwLock<HashMap<ProgramId, Program>> {}
-
-#[async_trait]
-impl Crud for RwLock<HashMap<ProgramId, Program>> {
-    type Type = Program;
-    type Id = ProgramId;
-    type NewType = ProgramContent;
-    type Error = AppError;
-    type Filter = QueryParams;
-
-    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error> {
-        if let Some(conflict) = self
-            .read()
-            .await
-            .values()
-            .find(|p| p.content.program_name == new.program_name)
-        {
-            warn!(id=%conflict.id, program_name=%new.program_name, "Conflicting program_name");
-            return Err(AppError::Conflict(format!(
-                "Program with id {} has the same name",
-                conflict.id
-            )));
-        }
-
-        let program = Program::new(new);
-        self.write()
-            .await
-            .insert(program.id.clone(), program.clone());
-
-        info!(%program.id,
-            program.program_name=program.content.program_name,
-            "program created"
-        );
-
-        Ok(program)
-    }
-
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        self.read().await.get(id).cloned().ok_or(AppError::NotFound)
-    }
-
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
-        self.read()
-            .await
-            .values()
-            .filter_map(|program| match filter.matches(program) {
-                Ok(true) => Some(Ok(program.clone())),
-                Ok(false) => None,
-                Err(err) => Some(Err(err)),
-            })
-            .skip(filter.skip as usize)
-            .take(filter.limit as usize)
-            .collect::<Result<Vec<_>, AppError>>()
-    }
-
-    async fn update(
-        &self,
-        id: &Self::Id,
-        content: Self::NewType,
-    ) -> Result<Self::Type, Self::Error> {
-        if let Some((_, conflict)) =
-            self.read().await.iter().find(|(inner_id, p)| {
-                id != *inner_id && p.content.program_name == content.program_name
-            })
-        {
-            warn!(updated=%id, conflicting=%conflict.id, program_name=%content.program_name, "Conflicting program_name");
-            return Err(AppError::Conflict(format!(
-                "Program with id {} has the same name",
-                conflict.id
-            )));
-        }
-
-        match self.write().await.get_mut(id) {
-            Some(occupied) => {
-                occupied.content = content;
-                occupied.modification_date_time = Utc::now();
-                Ok(occupied.clone())
-            }
-            None => Err(AppError::NotFound),
-        }
-    }
-
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        match self.write().await.remove(id) {
-            Some(program) => Ok(program),
-            None => Err(AppError::NotFound),
-        }
-    }
-}
 
 pub async fn get_all(
     State(program_source): State<Arc<dyn ProgramCrud>>,
@@ -169,11 +76,11 @@ pub struct QueryParams {
     target_type: Option<TargetLabel>,
     target_values: Option<Vec<String>>,
     #[serde(default)]
-    skip: u32,
+    pub(crate) skip: u32,
     // TODO how to interpret limit = 0 and what is the default?
     #[validate(range(max = 50))]
     #[serde(default = "get_50")]
-    limit: u32,
+    pub(crate) limit: u32,
 }
 
 fn get_50() -> u32 {

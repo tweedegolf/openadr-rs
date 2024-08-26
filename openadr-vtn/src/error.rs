@@ -4,6 +4,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use axum_extra::extract::QueryRejection;
 use openadr_wire::problem::Problem;
+use openadr_wire::IdentifierError;
 use serde::{Deserialize, Serialize};
 use tracing::{error, trace, warn};
 use uuid::Uuid;
@@ -26,6 +27,25 @@ pub enum AppError {
     Conflict(String),
     #[error("Authentication error: {0}")]
     Auth(String),
+    #[error("Database error: {0}")]
+    Sql(sqlx::Error),
+    #[error("Json (de)serialization error : {0}")]
+    SerdeJson(#[from] serde_json::Error),
+    #[error("Malformed Identifier")]
+    Identifier(#[from] IdentifierError),
+}
+
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
+        match err {
+            sqlx::Error::RowNotFound => Self::NotFound,
+            sqlx::Error::Database(err) if err.is_unique_violation() => {
+                trace!(?err);
+                Self::Conflict("Conflict".to_string())
+            }
+            _ => Self::Sql(err),
+        }
+    }
 }
 
 impl AppError {
@@ -129,6 +149,40 @@ impl AppError {
                     r#type: Default::default(),
                     title: Some(StatusCode::UNAUTHORIZED.to_string()),
                     status: StatusCode::UNAUTHORIZED,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::Sql(err) => {
+                error!("Error reference: {}, SQL error: {}", reference, err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::SerdeJson(err) => {
+                trace!("Error reference: {}, serde json error: {}", reference, err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::BAD_REQUEST.to_string()),
+                    status: StatusCode::BAD_REQUEST,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::Identifier(err) => {
+                trace!(
+                    "Error reference: {}, Malformed identifier: {}",
+                    reference,
+                    err
+                );
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::BAD_REQUEST.to_string()),
+                    status: StatusCode::BAD_REQUEST,
                     detail: Some(err.to_string()),
                     instance: Some(reference.to_string()),
                 }

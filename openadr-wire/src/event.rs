@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::interval::IntervalPeriod;
@@ -11,7 +12,7 @@ use crate::program::ProgramId;
 use crate::report::ReportDescriptor;
 use crate::target::TargetMap;
 use crate::values_map::Value;
-use crate::{Identifier, Unit};
+use crate::{Identifier, IdentifierError, Unit};
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
@@ -30,8 +31,8 @@ pub struct Event {
     pub content: EventContent,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventContent {
     /// Used as discriminator, e.g. notification.object
@@ -141,6 +142,14 @@ impl EventId {
     }
 }
 
+impl FromStr for EventId {
+    type Err = IdentifierError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.parse()?))
+    }
+}
+
 /// Used as discriminator, e.g. notification.object
 #[derive(
     Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize,
@@ -190,11 +199,23 @@ impl Ord for Priority {
     }
 }
 
+impl From<Option<i64>> for Priority {
+    fn from(value: Option<i64>) -> Self {
+        Self(value.and_then(|i| i.unsigned_abs().try_into().ok()))
+    }
+}
+
+impl From<Priority> for Option<i64> {
+    fn from(value: Priority) -> Self {
+        value.0.map(|u| u.into())
+    }
+}
+
 /// Contextual information used to interpret event valuesMap values. E.g. a PRICE payload simply
 /// contains a price value, an associated descriptor provides necessary context such as units and
 /// currency.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
@@ -224,8 +245,8 @@ pub enum Currency {
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventInterval {
     /// A client generated number assigned an interval object. Not a sequence number.
@@ -299,9 +320,8 @@ pub enum EventType {
     #[serde(rename = "CTA2045_SET_OVERRIDE_STATUS")]
     CTA2045SetOverrideStatus,
     #[serde(untagged)]
-    Private(
-        #[serde(deserialize_with = "crate::string_within_range_inclusive::<1, 128, _>")] String,
-    ),
+    #[serde(deserialize_with = "crate::string_within_range_inclusive::<1, 128, _>")]
+    Private(String),
 }
 
 #[cfg(test)]

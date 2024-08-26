@@ -1,12 +1,9 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::{async_trait, Json};
-use chrono::Utc;
+use axum::Json;
 use serde::Deserialize;
-use tokio::sync::RwLock;
 use tracing::{info, trace};
 use validator::Validate;
 
@@ -17,70 +14,10 @@ use openadr_wire::target::TargetLabel;
 use openadr_wire::Event;
 
 use crate::api::{AppResponse, ValidatedQuery};
-use crate::data_source::{Crud, EventCrud};
+use crate::data_source::EventCrud;
 use crate::error::AppError;
 use crate::error::AppError::NotImplemented;
 use crate::jwt::{BusinessUser, User};
-
-impl EventCrud for RwLock<HashMap<EventId, Event>> {}
-
-#[async_trait]
-impl Crud for RwLock<HashMap<EventId, Event>> {
-    type Type = Event;
-    type Id = EventId;
-    type NewType = EventContent;
-    type Error = AppError;
-    type Filter = QueryParams;
-
-    async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
-        let event = Event::new(content);
-        self.write().await.insert(event.id.clone(), event.clone());
-        Ok(event)
-    }
-
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        self.read().await.get(id).cloned().ok_or(AppError::NotFound)
-    }
-
-    async fn retrieve_all(
-        &self,
-        query_params: &Self::Filter,
-    ) -> Result<Vec<Self::Type>, Self::Error> {
-        self.read()
-            .await
-            .values()
-            .filter_map(|event| match query_params.matches(event) {
-                Ok(true) => Some(Ok(event.clone())),
-                Ok(false) => None,
-                Err(err) => Some(Err(err)),
-            })
-            .skip(query_params.skip as usize)
-            .take(query_params.limit as usize)
-            .collect::<Result<Vec<_>, AppError>>()
-    }
-
-    async fn update(
-        &self,
-        id: &Self::Id,
-        content: Self::NewType,
-    ) -> Result<Self::Type, Self::Error> {
-        match self.write().await.get_mut(id) {
-            Some(occupied) => {
-                occupied.content = content;
-                occupied.modification_date_time = Utc::now();
-                Ok(occupied.clone())
-            }
-            None => Err(AppError::NotFound),
-        }
-    }
-
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        match self.write().await.remove(id) {
-            Some(event) => Ok(event),
-            None => Err(AppError::NotFound),
-        }
-    }
-}
 
 pub async fn get_all(
     State(event_source): State<Arc<dyn EventCrud>>,
@@ -142,18 +79,19 @@ pub async fn delete(
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
     #[serde(rename = "programID")]
-    program_id: Option<ProgramId>,
-    target_type: Option<TargetLabel>,
-    target_values: Option<Vec<String>>,
+    pub(crate) program_id: Option<ProgramId>,
+    pub(crate) target_type: Option<TargetLabel>,
+    pub(crate) target_values: Option<Vec<String>>,
     #[serde(default)]
-    skip: u32,
+    #[validate(range(min = 0))]
+    pub(crate) skip: i64,
     // TODO how to interpret limit = 0 and what is the default?
-    #[validate(range(max = 50))]
+    #[validate(range(min = 1, max = 50))]
     #[serde(default = "get_50")]
-    limit: u32,
+    pub(crate) limit: i64,
 }
 
-fn get_50() -> u32 {
+fn get_50() -> i64 {
     50
 }
 
