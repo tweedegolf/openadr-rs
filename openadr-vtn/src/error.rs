@@ -27,14 +27,17 @@ pub enum AppError {
     Conflict(String),
     #[error("Authentication error: {0}")]
     Auth(String),
+    #[cfg(feature = "sqlx")]
     #[error("Database error: {0}")]
     Sql(sqlx::Error),
+    #[cfg(feature = "sqlx")]
     #[error("Json (de)serialization error : {0}")]
     SerdeJson(#[from] serde_json::Error),
     #[error("Malformed Identifier")]
     Identifier(#[from] IdentifierError),
 }
 
+#[cfg(feature = "sqlx")]
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         match err {
@@ -153,6 +156,7 @@ impl AppError {
                     instance: Some(reference.to_string()),
                 }
             }
+            #[cfg(feature = "sqlx")]
             AppError::Sql(err) => {
                 error!("Error reference: {}, SQL error: {}", reference, err);
                 Problem {
@@ -163,6 +167,7 @@ impl AppError {
                     instance: Some(reference.to_string()),
                 }
             }
+            #[cfg(feature = "sqlx")]
             AppError::SerdeJson(err) => {
                 trace!("Error reference: {}, serde json error: {}", reference, err);
                 Problem {
