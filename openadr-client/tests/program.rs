@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 
-use openadr_client::{Error, PaginationOptions};
+use openadr_client::{Error, Filter, PaginationOptions};
 use openadr_wire::{program::ProgramContent, target::TargetLabel};
 
 mod common;
@@ -162,30 +162,29 @@ async fn retrieve_all_with_filter() {
     }
 
     let programs = client
-        .get_programs_request(None, &[], PaginationOptions { skip: 0, limit: 50 })
+        .get_programs(Filter::None, PaginationOptions { skip: 0, limit: 50 })
         .await
         .unwrap();
     assert_eq!(programs.len(), 3);
 
     // skip
     let programs = client
-        .get_programs_request(None, &[], PaginationOptions { skip: 1, limit: 50 })
+        .get_programs(Filter::None, PaginationOptions { skip: 1, limit: 50 })
         .await
         .unwrap();
     assert_eq!(programs.len(), 2);
 
     // limit
     let programs = client
-        .get_programs_request(None, &[], PaginationOptions { skip: 0, limit: 2 })
+        .get_programs(Filter::None, PaginationOptions { skip: 0, limit: 2 })
         .await
         .unwrap();
     assert_eq!(programs.len(), 2);
 
     // program name
     let err = client
-        .get_programs_request(
-            Some(TargetLabel::Private("NONSENSE".to_string())),
-            &[],
+        .get_programs(
+            Filter::By(TargetLabel::Private("NONSENSE".to_string()), &[]),
             PaginationOptions { skip: 0, limit: 2 },
         )
         .await
@@ -196,9 +195,8 @@ async fn retrieve_all_with_filter() {
     assert_eq!(problem.status, StatusCode::NOT_IMPLEMENTED);
 
     let programs = client
-        .get_programs_request(
-            Some(TargetLabel::ProgramName),
-            &["program1", "program2"],
+        .get_programs(
+            Filter::By(TargetLabel::ProgramName, &["program1", "program2"]),
             PaginationOptions { skip: 0, limit: 50 },
         )
         .await
