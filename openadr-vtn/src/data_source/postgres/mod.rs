@@ -1,8 +1,12 @@
 use crate::data_source::postgres::event::PgEventStorage;
+use crate::data_source::postgres::program::PgProgramStorage;
+use crate::data_source::postgres::report::PgReportStorage;
 use crate::data_source::{AuthInfo, AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
+use dotenvy::dotenv;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{error, info};
 
 mod event;
 mod program;
@@ -16,11 +20,11 @@ pub struct PostgresStorage {
 
 impl DataSource for PostgresStorage {
     fn programs(&self) -> Arc<dyn ProgramCrud> {
-        Arc::<PgEventStorage>::new(self.db.clone().into())
+        Arc::<PgProgramStorage>::new(self.db.clone().into())
     }
 
     fn reports(&self) -> Arc<dyn ReportCrud> {
-        Arc::<PgEventStorage>::new(self.db.clone().into())
+        Arc::<PgReportStorage>::new(self.db.clone().into())
     }
 
     fn events(&self) -> Arc<dyn EventCrud> {
@@ -33,12 +37,22 @@ impl DataSource for PostgresStorage {
 }
 
 impl PostgresStorage {
-    pub async fn new(db_url: &str) -> Result<Self, sqlx::Error> {
-        let db = PgPool::connect(db_url).await?;
-
+    pub fn new(db: PgPool) -> Result<Self, sqlx::Error> {
         Ok(Self {
             db,
             auth: Arc::new(Default::default()),
         })
+    }
+
+    pub async fn from_env() -> Result<Self, sqlx::Error> {
+        dotenv().unwrap();
+        let db_url = std::env::var("DATABASE_URL")
+            .expect("Missing DATABASE_URL env var even though the 'postgres' feature is active");
+        
+        let db = PgPool::connect(&db_url).await?;
+        
+        Ok(Self::new(db)
+            .inspect_err(|err| error!(?err, "could not connect to Postgres database"))
+            .inspect(|_| info!("Successfully connected to Postgres backend"))?)
     }
 }

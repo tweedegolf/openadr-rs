@@ -25,17 +25,7 @@ async fn main() {
     info!("listening on http://{}", listener.local_addr().unwrap());
 
     #[cfg(feature = "postgres")]
-    let storage = {
-        use dotenvy::dotenv;
-        dotenv().unwrap();
-        let db_url = std::env::var("DATABASE_URL")
-            .expect("Missing DATABASE_URL env var even though the 'postgres' feature is active");
-        PostgresStorage::new(&db_url)
-            .await
-            .inspect_err(|err| error!(?err, "could not connect to Postgres database"))
-            .inspect(|_| info!("Successfully connected to Postgres backend"))
-            .unwrap()
-    };
+    let storage = PostgresStorage::from_env().await.unwrap();
 
     #[cfg(not(feature = "sqlx"))]
     let storage = InMemoryStorage::default();

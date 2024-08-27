@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-
+use sqlx::{PgPool};
 use openadr_client::{Error, PaginationOptions};
 use openadr_wire::{program::ProgramContent, target::TargetLabel};
 
@@ -25,17 +25,17 @@ fn default_content() -> ProgramContent {
     }
 }
 
-#[tokio::test]
-async fn get() {
-    let client = common::setup_client();
+#[sqlx::test]
+async fn get(db: PgPool) {
+    let client = common::setup_client(db).await;
     let program_client = client.create_program(default_content()).await.unwrap();
 
     assert_eq!(program_client.content(), &default_content());
 }
 
-#[tokio::test]
-async fn delete() {
-    let client = common::setup_client();
+#[sqlx::test]
+async fn delete(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -64,9 +64,9 @@ async fn delete() {
     assert_eq!(programs.len(), 2);
 }
 
-#[tokio::test]
-async fn update() {
-    let client = common::setup_client();
+#[sqlx::test]
+async fn update(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -89,9 +89,9 @@ async fn update() {
     assert!(program.modification_date_time() > creation_date_time);
 }
 
-#[tokio::test]
-async fn update_same_name() {
-    let client = common::setup_client();
+#[sqlx::test]
+async fn update_same_name(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -123,9 +123,9 @@ async fn update_same_name() {
     assert!(program2.modification_date_time() == creation_date_time);
 }
 
-#[tokio::test]
-async fn create_same_name() {
-    let client = common::setup_client();
+#[sqlx::test]
+async fn create_same_name(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -140,9 +140,9 @@ async fn create_same_name() {
     assert_eq!(problem.status, StatusCode::CONFLICT);
 }
 
-#[tokio::test]
-async fn retrieve_all_with_filter() {
-    let client = common::setup_client();
+#[sqlx::test]
+async fn retrieve_all_with_filter(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),

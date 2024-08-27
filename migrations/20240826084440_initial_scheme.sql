@@ -43,7 +43,7 @@ create table event
     targets                jsonb
 );
 
-create unique index event_event_name_uindex
+create index event_event_name_index
     on event (event_name);
 
 

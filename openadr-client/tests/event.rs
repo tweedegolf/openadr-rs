@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-
+use sqlx::PgPool;
 use openadr_client::{Error, Filter, PaginationOptions};
 use openadr_wire::{
     event::{EventContent, Priority},
@@ -23,18 +23,18 @@ fn default_content(program_id: &ProgramId) -> EventContent {
     }
 }
 
-#[tokio::test]
-async fn get() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test]
+async fn get(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
     let event_content = default_content(client.id());
     let event_client = client.create_event(event_content.clone()).await.unwrap();
 
     assert_eq!(event_client.content(), &event_content);
 }
 
-#[tokio::test]
-async fn delete() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test]
+async fn delete(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
         event_name: Some("event1".to_string()),
@@ -67,9 +67,9 @@ async fn delete() {
     assert_eq!(events.len(), 2);
 }
 
-#[tokio::test]
-async fn update() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test]
+async fn update(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
         event_name: Some("event1".to_string()),
@@ -92,9 +92,9 @@ async fn update() {
     assert!(event.modification_date_time() > creation_date_time);
 }
 
-#[tokio::test]
-async fn update_same_name() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test]
+async fn update_same_name(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
         event_name: Some("event1".to_string()),
@@ -123,9 +123,9 @@ async fn update_same_name() {
     assert!(event2.modification_date_time() > creation_date_time);
 }
 
-#[tokio::test]
-async fn create_same_name() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test]
+async fn create_same_name(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
         event_name: Some("event1".to_string()),
@@ -137,23 +137,22 @@ async fn create_same_name() {
     let _ = client.create_event(event1).await.unwrap();
 }
 
-#[tokio::test]
-#[ignore]
-async fn retrieve_all_with_filter() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test]
+async fn retrieve_all_with_filter(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
-        program_id: ProgramId::new("program1").unwrap(),
+        program_id: client.id().clone(),
         event_name: Some("event1".to_string()),
         ..default_content(client.id())
     };
     let event2 = EventContent {
-        program_id: ProgramId::new("program2").unwrap(),
+        program_id: client.id().clone(),
         event_name: Some("event2".to_string()),
         ..default_content(client.id())
     };
     let event3 = EventContent {
-        program_id: ProgramId::new("program3").unwrap(),
+        program_id: client.id().clone(),
         event_name: Some("event3".to_string()),
         ..default_content(client.id())
     };
@@ -205,9 +204,9 @@ async fn retrieve_all_with_filter() {
     assert_eq!(events.len(), 2);
 }
 
-#[tokio::test]
-async fn get_program_events() {
-    let client = common::setup_client();
+#[sqlx::test]
+async fn get_program_events(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = client
         .create_program(ProgramContent::new("program1"))

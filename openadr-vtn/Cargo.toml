@@ -38,11 +38,11 @@ chrono.workspace = true
 thiserror.workspace = true
 
 sqlx = {workspace = true, optional = true}
-dotenvy.workspace = true
+dotenvy = {workspace = true, optional = true}
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 
 [features]
 live-db-test = []
-postgres = ["sqlx/postgres"]
+postgres = ["sqlx/postgres", "dep:dotenvy"]

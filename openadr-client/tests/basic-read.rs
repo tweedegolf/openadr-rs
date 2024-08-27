@@ -1,10 +1,11 @@
+use sqlx::PgPool;
 use openadr_wire::program::ProgramContent;
 
 mod common;
 
-#[tokio::test]
-async fn basic_create_read() -> Result<(), openadr_client::Error> {
-    let client = common::setup_client();
+#[sqlx::test]
+async fn basic_create_read(db: PgPool) -> Result<(), openadr_client::Error> {
+    let client = common::setup_client(db).await;
 
     client
         .create_program(ProgramContent::new("test-prog"))

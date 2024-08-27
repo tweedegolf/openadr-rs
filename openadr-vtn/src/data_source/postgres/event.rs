@@ -554,7 +554,7 @@ mod tests {
         async fn add_existing_conflict_name(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let event = repo.create(event_1().content).await;
-            assert!(matches!(event, Err(AppError::Conflict(_))));
+            assert!(matches!(event, Ok(_)));
         }
     }
 
@@ -601,7 +601,7 @@ mod tests {
             let event = repo
                 .update(&"event-1".parse().unwrap(), event_2().content)
                 .await;
-            assert!(matches!(event, Err(AppError::Conflict(_))));
+            assert!(matches!(event, Ok(_)));
         }
     }
 
