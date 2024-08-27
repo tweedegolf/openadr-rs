@@ -1,4 +1,4 @@
-use openadr_client::{ClientCredentials, Target};
+use openadr_client::ClientCredentials;
 use openadr_wire::program::ProgramContent;
 
 #[tokio::main]
@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let _created_program = client.create_program(ProgramContent::new("name")).await?;
     // let created_program_1 = client.create_program(ProgramContent::new("name1")).await?;
-    let program = client.get_program(Target::Program("name")).await?;
+    let program = client.get_program_by_name("name").await?;
     // let created_event = program
     //     .create_event(program.new_event().with_event_name("prices3").with_priority(0))
     //     .await?;

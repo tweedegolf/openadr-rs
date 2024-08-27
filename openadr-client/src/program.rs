@@ -107,7 +107,7 @@ impl ProgramClient {
         pagination: PaginationOptions,
     ) -> Result<Vec<EventClient>> {
         self.client
-            .get_events_request(Some(self.id()), filter, pagination)
+            .get_events(Some(self.id()), filter, pagination)
             .await
     }
 
@@ -130,7 +130,7 @@ impl ProgramClient {
 
             let received = self
                 .client
-                .get_events_request(Some(self.id()), Filter::None, pagination)
+                .get_events(Some(self.id()), Filter::None, pagination)
                 .await?;
             let received_all = received.len() < page_size;
             for event in received {
