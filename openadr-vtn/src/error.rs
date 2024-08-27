@@ -32,7 +32,10 @@ pub enum AppError {
     Sql(sqlx::Error),
     #[cfg(feature = "sqlx")]
     #[error("Json (de)serialization error : {0}")]
-    SerdeJson(#[from] serde_json::Error),
+    SerdeJsonInternalServerError(serde_json::Error),
+    #[cfg(feature = "sqlx")]
+    #[error("Json (de)serialization error : {0}")]
+    SerdeJsonBadRequest(serde_json::Error),
     #[error("Malformed Identifier")]
     Identifier(#[from] IdentifierError),
 }
@@ -168,7 +171,18 @@ impl AppError {
                 }
             }
             #[cfg(feature = "sqlx")]
-            AppError::SerdeJson(err) => {
+            AppError::SerdeJsonInternalServerError(err) => {
+                trace!("Error reference: {}, serde json error: {}", reference, err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            #[cfg(feature = "sqlx")]
+            AppError::SerdeJsonBadRequest(err) => {
                 trace!("Error reference: {}, serde json error: {}", reference, err);
                 Problem {
                     r#type: Default::default(),

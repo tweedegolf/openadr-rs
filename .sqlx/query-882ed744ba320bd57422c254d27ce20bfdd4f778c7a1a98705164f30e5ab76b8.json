@@ -1,0 +1,115 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT * FROM program\n            WHERE ($1::text IS NULL OR jsonb_path_query_array(targets, '$[*].type') ? $1)\n              AND ($2::text[] IS NULL OR jsonb_path_query_array(targets, '$[*].values[*]') ?| ($2))\n            OFFSET $3 LIMIT $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_date_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "modification_date_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "program_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "program_long_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "retailer_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "retailer_long_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "program_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "country",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "principal_subdivision",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "interval_period",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 11,
+        "name": "program_descriptions",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "binding_events",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "local_price",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 14,
+        "name": "payload_descriptors",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 15,
+        "name": "targets",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "TextArray",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "882ed744ba320bd57422c254d27ce20bfdd4f778c7a1a98705164f30e5ab76b8"
+}

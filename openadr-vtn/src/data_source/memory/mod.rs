@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 
 mod event;
 mod program;
+mod report;
 
 #[derive(Default, Clone)]
 pub struct InMemoryStorage {

@@ -1,13 +1,10 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::{async_trait, Json};
-use chrono::Utc;
+use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use tokio::sync::RwLock;
 use tracing::{info, trace};
 use validator::Validate;
 
@@ -17,69 +14,9 @@ use openadr_wire::report::{ReportContent, ReportId};
 use openadr_wire::Report;
 
 use crate::api::{AppResponse, ValidatedQuery};
-use crate::data_source::{Crud, ReportCrud};
+use crate::data_source::ReportCrud;
 use crate::error::AppError;
 use crate::jwt::{BusinessUser, User};
-
-impl ReportCrud for RwLock<HashMap<ReportId, Report>> {}
-
-#[async_trait]
-impl Crud for RwLock<HashMap<ReportId, Report>> {
-    type Type = Report;
-    type Id = ReportId;
-    type NewType = ReportContent;
-    type Error = AppError;
-    type Filter = QueryParams;
-
-    async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
-        let event = Report::new(content);
-        self.write().await.insert(event.id.clone(), event.clone());
-        Ok(event)
-    }
-
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        self.read().await.get(id).cloned().ok_or(AppError::NotFound)
-    }
-
-    async fn retrieve_all(
-        &self,
-        query_params: &Self::Filter,
-    ) -> Result<Vec<Self::Type>, Self::Error> {
-        self.read()
-            .await
-            .values()
-            .filter_map(|event| match query_params.matches(event) {
-                Ok(true) => Some(Ok(event.clone())),
-                Ok(false) => None,
-                Err(err) => Some(Err(err)),
-            })
-            .skip(query_params.skip as usize)
-            .take(query_params.limit as usize)
-            .collect::<Result<Vec<_>, AppError>>()
-    }
-
-    async fn update(
-        &self,
-        id: &Self::Id,
-        content: Self::NewType,
-    ) -> Result<Self::Type, Self::Error> {
-        match self.write().await.get_mut(id) {
-            Some(occupied) => {
-                occupied.content = content;
-                occupied.modification_date_time = Utc::now();
-                Ok(occupied.clone())
-            }
-            None => Err(AppError::NotFound),
-        }
-    }
-
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        match self.write().await.remove(id) {
-            Some(event) => Ok(event),
-            None => Err(AppError::NotFound),
-        }
-    }
-}
 
 pub async fn get_all(
     State(report_source): State<Arc<dyn ReportCrud>>,
@@ -102,13 +39,6 @@ pub async fn get(
     Ok(Json(report))
 }
 
-// TODO
-//   '409':
-//   description: Conflict. Implementation dependent response if report with the same reportName exists.
-//   content:
-//        application/json:
-//        schema:
-//        $ref: '#/components/schemas/problem'
 pub async fn add(
     State(report_source): State<Arc<dyn ReportCrud>>,
     User(_user): User,
@@ -154,11 +84,11 @@ pub struct QueryParams {
     event_id: Option<EventId>,
     client_name: Option<String>,
     #[serde(default)]
-    skip: u32,
+    pub(crate) skip: u32,
     // TODO how to interpret limit = 0 and what is the default?
     #[validate(range(max = 50))]
     #[serde(default = "get_50")]
-    limit: u32,
+    pub(crate) limit: u32,
 }
 
 fn get_50() -> u32 {

@@ -5,6 +5,7 @@ use openadr_vtn::data_source::AuthInfo;
 use openadr_wire::program::ProgramContent;
 use url::Url;
 
+// FIXME make this function independent of the storage backend
 pub fn setup_mock_client() -> Client {
     use openadr_vtn::{data_source::InMemoryStorage, jwt::JwtManager, state::AppState};
 

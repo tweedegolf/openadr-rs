@@ -38,6 +38,7 @@ chrono.workspace = true
 thiserror.workspace = true
 
 sqlx = {workspace = true, optional = true}
+dotenvy.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

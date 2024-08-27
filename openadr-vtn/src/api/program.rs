@@ -73,17 +73,18 @@ pub async fn delete(
 #[derive(Deserialize, Validate, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
-    target_type: Option<TargetLabel>,
-    target_values: Option<Vec<String>>,
+    pub(crate) target_type: Option<TargetLabel>,
+    pub(crate) target_values: Option<Vec<String>>,
     #[serde(default)]
-    pub(crate) skip: u32,
+    #[validate(range(min = 0))]
+    pub(crate) skip: i64,
     // TODO how to interpret limit = 0 and what is the default?
-    #[validate(range(max = 50))]
+    #[validate(range(min = 1, max = 50))]
     #[serde(default = "get_50")]
-    pub(crate) limit: u32,
+    pub(crate) limit: i64,
 }
 
-fn get_50() -> u32 {
+fn get_50() -> i64 {
     50
 }
 
@@ -109,6 +110,7 @@ impl QueryParams {
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "sqlx"))] //FIXME make these tests compatible with any storage backend
 mod test {
     use crate::{
         data_source::{AuthInfo, InMemoryStorage},

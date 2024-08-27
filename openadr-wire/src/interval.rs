@@ -1,10 +1,9 @@
 //! Descriptions of temporal periods
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-
 use crate::values_map::ValuesMap;
 use crate::Duration;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.

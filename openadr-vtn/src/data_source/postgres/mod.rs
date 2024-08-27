@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 mod event;
+mod program;
 
 #[derive(Clone)]
 pub struct PostgresStorage {
@@ -27,5 +28,16 @@ impl DataSource for PostgresStorage {
 
     fn auth(&self) -> Arc<dyn AuthSource> {
         self.auth.clone() // TODO
+    }
+}
+
+impl PostgresStorage {
+    pub async fn new(db_url: &str) -> Result<Self, sqlx::Error> {
+        let db = PgPool::connect(db_url).await?;
+
+        Ok(Self {
+            db,
+            auth: Arc::new(Default::default()),
+        })
     }
 }

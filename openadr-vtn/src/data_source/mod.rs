@@ -1,3 +1,4 @@
+#[cfg(not(feature = "sqlx"))]
 mod memory;
 #[cfg(feature = "postgres")]
 mod postgres;
@@ -12,7 +13,10 @@ use openadr_wire::{
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[cfg(not(feature = "sqlx"))]
 pub use memory::InMemoryStorage;
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresStorage;
 
 use crate::{error::AppError, jwt::AuthRole};
 

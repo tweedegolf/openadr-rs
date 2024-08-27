@@ -5,7 +5,11 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
-use openadr_vtn::data_source::{AuthInfo, InMemoryStorage};
+use openadr_vtn::data_source::AuthInfo;
+#[cfg(not(feature = "postgres"))]
+use openadr_vtn::data_source::InMemoryStorage;
+#[cfg(feature = "postgres")]
+use openadr_vtn::data_source::PostgresStorage;
 use openadr_vtn::jwt::JwtManager;
 use openadr_vtn::state::AppState;
 
@@ -20,6 +24,20 @@ async fn main() {
     let listener = TcpListener::bind(addr).await.unwrap();
     info!("listening on http://{}", listener.local_addr().unwrap());
 
+    #[cfg(feature = "postgres")]
+    let storage = {
+        use dotenvy::dotenv;
+        dotenv().unwrap();
+        let db_url = std::env::var("DATABASE_URL")
+            .expect("Missing DATABASE_URL env var even though the 'postgres' feature is active");
+        PostgresStorage::new(&db_url)
+            .await
+            .inspect_err(|err| error!(?err, "could not connect to Postgres database"))
+            .inspect(|_| info!("Successfully connected to Postgres backend"))
+            .unwrap()
+    };
+
+    #[cfg(not(feature = "sqlx"))]
     let storage = InMemoryStorage::default();
     storage.auth.write().await.push(AuthInfo::bl_admin());
     let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());

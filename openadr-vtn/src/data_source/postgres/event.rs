@@ -7,6 +7,7 @@ use openadr_wire::event::{EventContent, EventId, Priority};
 use openadr_wire::Event;
 use sqlx::PgPool;
 use std::str::FromStr;
+use tracing::error;
 
 #[async_trait]
 impl EventCrud for PgEventStorage {}
@@ -21,6 +22,7 @@ impl From<PgPool> for PgEventStorage {
     }
 }
 
+#[derive(Debug)]
 struct PostgresEvent {
     id: String,
     created_date_time: DateTime<Utc>,
@@ -38,25 +40,51 @@ struct PostgresEvent {
 impl TryFrom<PostgresEvent> for Event {
     type Error = AppError;
 
+    #[tracing::instrument(name = "TryFrom<PostgresEvent> for Event")]
     fn try_from(value: PostgresEvent) -> Result<Self, Self::Error> {
         let targets = match value.targets {
             None => None,
-            Some(t) => serde_json::from_value(t)?,
+            Some(t) => serde_json::from_value(t)
+                .inspect_err(|err| {
+                    error!(?err, "Failed to deserialize JSON from DB to `TargetMap`")
+                })
+                .map_err(AppError::SerdeJsonInternalServerError)?,
         };
 
         let report_descriptors = match value.report_descriptors {
             None => None,
-            Some(t) => serde_json::from_value(t)?,
+            Some(t) => serde_json::from_value(t)
+                .inspect_err(|err| {
+                    error!(
+                        ?err,
+                        "Failed to deserialize JSON from DB to `Vec<ReportDescriptor>`"
+                    )
+                })
+                .map_err(AppError::SerdeJsonInternalServerError)?,
         };
 
         let payload_descriptors = match value.payload_descriptors {
             None => None,
-            Some(t) => serde_json::from_value(t)?,
+            Some(t) => serde_json::from_value(t)
+                .inspect_err(|err| {
+                    error!(
+                        ?err,
+                        "Failed to deserialize JSON from DB to `Vec<EventPayloadDescriptor>`"
+                    )
+                })
+                .map_err(AppError::SerdeJsonInternalServerError)?,
         };
 
         let interval_period = match value.interval_period {
             None => None,
-            Some(t) => serde_json::from_value(t)?,
+            Some(t) => serde_json::from_value(t)
+                .inspect_err(|err| {
+                    error!(
+                        ?err,
+                        "Failed to deserialize JSON from DB to `IntervalPeriod`"
+                    )
+                })
+                .map_err(AppError::SerdeJsonInternalServerError)?,
         };
 
         Ok(Self {
@@ -72,7 +100,8 @@ impl TryFrom<PostgresEvent> for Event {
                 report_descriptors,
                 payload_descriptors,
                 interval_period,
-                intervals: serde_json::from_value(value.intervals)?,
+                intervals: serde_json::from_value(value.intervals)
+                    .map_err(AppError::SerdeJsonInternalServerError)?,
             },
         })
     }
@@ -97,11 +126,11 @@ impl Crud for PgEventStorage {
             new.program_id.as_str(),
             new.event_name,
             Into::<Option<i64>>::into(new.priority),
-            serde_json::to_value(&new.targets)?,
-            serde_json::to_value(&new.report_descriptors)?,
-            serde_json::to_value(&new.payload_descriptors)?,
-            serde_json::to_value(&new.interval_period)?,
-            serde_json::to_value(&new.intervals)?
+            serde_json::to_value(&new.targets).map_err(AppError::SerdeJsonBadRequest)?,
+            serde_json::to_value(&new.report_descriptors).map_err(AppError::SerdeJsonBadRequest)?,
+            serde_json::to_value(&new.payload_descriptors).map_err( AppError::SerdeJsonBadRequest)?,
+            serde_json::to_value(&new.interval_period).map_err(AppError::SerdeJsonBadRequest)?,
+            serde_json::to_value(&new.intervals).map_err(AppError::SerdeJsonBadRequest)?,
         )
             .fetch_one(&self.db)
             .await?
@@ -167,11 +196,12 @@ impl Crud for PgEventStorage {
             new.program_id.as_str(),
             new.event_name,
             Into::<Option<i64>>::into(new.priority),
-            serde_json::to_value(&new.targets)?,
-            serde_json::to_value(&new.report_descriptors)?,
-            serde_json::to_value(&new.payload_descriptors)?,
-            serde_json::to_value(&new.interval_period)?,
-            serde_json::to_value(&new.intervals)?
+            serde_json::to_value(&new.targets).map_err(AppError::SerdeJsonBadRequest)?,
+            serde_json::to_value(&new.report_descriptors).map_err(AppError::SerdeJsonBadRequest)?,
+            serde_json::to_value(&new.payload_descriptors)
+                .map_err(AppError::SerdeJsonBadRequest)?,
+            serde_json::to_value(&new.interval_period).map_err(AppError::SerdeJsonBadRequest)?,
+            serde_json::to_value(&new.intervals).map_err(AppError::SerdeJsonBadRequest)?,
         )
         .fetch_one(&self.db)
         .await?

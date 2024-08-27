@@ -71,7 +71,7 @@ jobs:
         run: |
           docker compose up db --wait && \
           cargo install sqlx-cli --no-default-features --features rustls,postgres && \
-          cargo sqlx migrate run
+          cargo sqlx migrate run --source openadr-vtn/migrations
 
       - name: cargo build
         run: cargo build ${{ matrix.features }}

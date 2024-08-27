@@ -127,6 +127,7 @@ impl QueryParams {
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "sqlx"))] //FIXME make these tests compatible with any storage backend
 mod test {
     use crate::{
         data_source::{AuthInfo, InMemoryStorage},
