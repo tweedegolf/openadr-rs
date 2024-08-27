@@ -1,11 +1,11 @@
 use axum::http::StatusCode;
-use sqlx::PgPool;
 use openadr_client::{Error, Filter, PaginationOptions};
 use openadr_wire::{
     event::{EventContent, Priority},
     program::{ProgramContent, ProgramId},
     target::TargetLabel,
 };
+use sqlx::PgPool;
 
 mod common;
 

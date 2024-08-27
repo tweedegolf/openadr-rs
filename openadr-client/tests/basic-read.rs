@@ -1,5 +1,5 @@
-use sqlx::PgPool;
 use openadr_wire::program::ProgramContent;
+use sqlx::PgPool;
 
 mod common;
 

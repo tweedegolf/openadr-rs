@@ -48,11 +48,11 @@ impl PostgresStorage {
         dotenv().unwrap();
         let db_url = std::env::var("DATABASE_URL")
             .expect("Missing DATABASE_URL env var even though the 'postgres' feature is active");
-        
+
         let db = PgPool::connect(&db_url).await?;
-        
-        Ok(Self::new(db)
+
+        Self::new(db)
             .inspect_err(|err| error!(?err, "could not connect to Postgres database"))
-            .inspect(|_| info!("Successfully connected to Postgres backend"))?)
+            .inspect(|_| info!("Successfully connected to Postgres backend"))
     }
 }

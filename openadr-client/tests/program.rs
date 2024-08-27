@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
-use sqlx::{PgPool};
 use openadr_client::{Error, PaginationOptions};
 use openadr_wire::{program::ProgramContent, target::TargetLabel};
+use sqlx::PgPool;
 
 mod common;
 

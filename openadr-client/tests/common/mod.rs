@@ -1,8 +1,8 @@
-use std::env::VarError;
-use sqlx::{PgPool};
 use openadr_client::{Client, ClientCredentials, MockClientRef, ProgramClient};
 use openadr_vtn::data_source::AuthInfo;
 use openadr_wire::program::ProgramContent;
+use sqlx::PgPool;
+use std::env::VarError;
 use url::Url;
 
 // FIXME make this function independent of the storage backend
