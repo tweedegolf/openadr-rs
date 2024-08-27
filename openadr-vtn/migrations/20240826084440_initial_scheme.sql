@@ -60,7 +60,7 @@ create table report
     client_name            text        not null,
     report_name            text,
     payload_descriptors    jsonb,
-    resources              jsonb
+    resources              jsonb       not null
 );
 
 create unique index report_report_name_uindex

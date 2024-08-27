@@ -79,19 +79,19 @@ pub async fn delete(
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
     #[serde(rename = "programID")]
-    program_id: Option<ProgramId>,
+    pub(crate) program_id: Option<ProgramId>,
     #[serde(rename = "eventID")]
-    event_id: Option<EventId>,
-    client_name: Option<String>,
+    pub(crate) event_id: Option<EventId>,
+    pub(crate) client_name: Option<String>,
     #[serde(default)]
-    pub(crate) skip: u32,
+    pub(crate) skip: i64,
     // TODO how to interpret limit = 0 and what is the default?
     #[validate(range(max = 50))]
     #[serde(default = "get_50")]
-    pub(crate) limit: u32,
+    pub(crate) limit: i64,
 }
 
-fn get_50() -> u32 {
+fn get_50() -> i64 {
     50
 }
 

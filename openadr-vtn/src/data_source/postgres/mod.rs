@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 
 mod event;
 mod program;
+mod report;
 
 #[derive(Clone)]
 pub struct PostgresStorage {
@@ -15,11 +16,11 @@ pub struct PostgresStorage {
 
 impl DataSource for PostgresStorage {
     fn programs(&self) -> Arc<dyn ProgramCrud> {
-        todo!();
+        Arc::<PgEventStorage>::new(self.db.clone().into())
     }
 
     fn reports(&self) -> Arc<dyn ReportCrud> {
-        todo!();
+        Arc::<PgEventStorage>::new(self.db.clone().into())
     }
 
     fn events(&self) -> Arc<dyn EventCrud> {

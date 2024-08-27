@@ -136,6 +136,7 @@ impl Crud for PgProgramStorage {
             new.program_type,
             new.country,
             new.principal_subdivision,
+            // TODO this will serialize 'null' as JSON in the DB instead of using the NULL from the DB
             serde_json::to_value(new.interval_period).map_err(AppError::SerdeJsonBadRequest)?,
             serde_json::to_value(new.program_descriptions).map_err(AppError::SerdeJsonBadRequest)?,
             new.binding_events,

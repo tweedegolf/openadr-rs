@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::event::EventId;
@@ -11,7 +12,7 @@ use crate::interval::{Interval, IntervalPeriod};
 use crate::program::ProgramId;
 use crate::target::TargetMap;
 use crate::values_map::Value;
-use crate::{Identifier, Unit};
+use crate::{Identifier, IdentifierError, Unit};
 
 /// report object.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -105,6 +106,14 @@ impl ReportId {
 impl Display for ReportId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for ReportId {
+    type Err = IdentifierError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.parse()?))
     }
 }
 
