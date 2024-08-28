@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use uuid::Uuid;
 
 use crate::interval::IntervalPeriod;
 use crate::program::ProgramId;
@@ -112,17 +111,6 @@ impl EventContent {
     pub fn with_intervals(mut self, intervals: Vec<EventInterval>) -> Self {
         self.intervals = intervals;
         self
-    }
-}
-
-impl Event {
-    pub fn new(content: EventContent) -> Self {
-        Self {
-            id: EventId(format!("event-{}", Uuid::new_v4()).parse().unwrap()),
-            created_date_time: Utc::now(),
-            modification_date_time: Utc::now(),
-            content,
-        }
     }
 }
 

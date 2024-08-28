@@ -51,8 +51,21 @@ impl PostgresStorage {
 
         let db = PgPool::connect(&db_url).await?;
 
+        let connect_options = db.connect_options();
+        let safe_db_url = format!(
+            "{}:{}/{}",
+            connect_options.get_host(),
+            connect_options.get_port(),
+            connect_options.get_database().unwrap_or_default()
+        );
+
         Self::new(db)
             .inspect_err(|err| error!(?err, "could not connect to Postgres database"))
-            .inspect(|_| info!("Successfully connected to Postgres backend"))
+            .inspect(|_| {
+                info!(
+                    "Successfully connected to Postgres backend at {}",
+                    safe_db_url
+                )
+            })
     }
 }

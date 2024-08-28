@@ -136,27 +136,28 @@ impl QueryParams {
 }
 
 #[cfg(test)]
-#[cfg(not(feature = "sqlx"))] //FIXME make these tests compatible with any storage backend
 mod test {
     use crate::{
-        data_source::{AuthInfo, InMemoryStorage},
+        data_source::{AuthInfo, PostgresStorage},
         jwt::{AuthRole, JwtManager},
         state::AppState,
     };
 
     use super::*;
+    // for `call`, `oneshot`, and `ready`
+    use crate::data_source::DataSource;
     use axum::{
         body::Body,
         http::{self, Request, Response, StatusCode},
         Router,
     };
     use http_body_util::BodyExt;
+    use openadr_wire::event::Priority;
+    use sqlx::PgPool;
     // for `collect`
     use tower::{Service, ServiceExt};
-    // for `call`, `oneshot`, and `ready`
-    use openadr_wire::event::Priority;
 
-    fn default_content() -> EventContent {
+    fn default_event_content() -> EventContent {
         EventContent {
             object_type: None,
             program_id: ProgramId::new("program_id").unwrap(),
@@ -180,19 +181,24 @@ mod test {
             .unwrap()
     }
 
-    fn state_with_events(events: Vec<Event>) -> AppState {
-        let store = InMemoryStorage::default();
+    async fn state_with_events(
+        new_events: Vec<EventContent>,
+        db: PgPool,
+    ) -> (AppState, Vec<Event>) {
+        let store = PostgresStorage::new(db).unwrap();
+        let mut events = Vec::new();
 
         store.auth.try_write().unwrap().push(AuthInfo::bl_admin());
 
-        {
-            let mut writer = store.events.try_write().unwrap();
-            for event in events {
-                writer.insert(event.id.clone(), event);
-            }
+        for event in new_events {
+            events.push(store.events().create(event.clone()).await.unwrap());
+            assert_eq!(events[events.len() - 1].content, event)
         }
 
-        AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
+        (
+            AppState::new(store, JwtManager::from_base64_secret("test").unwrap()),
+            events,
+        )
     }
 
     fn get_admin_token_from_state(state: &AppState) -> String {
@@ -206,12 +212,10 @@ mod test {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn get() {
-        let event = Event::new(default_content());
-        let event_id = event.id.clone();
-
-        let state = state_with_events(vec![event.clone()]);
+    #[sqlx::test]
+    async fn get(db: PgPool) {
+        let (state, mut events) = state_with_events(vec![default_event_content()], db).await;
+        let event = events.remove(0);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -219,7 +223,7 @@ mod test {
             .oneshot(
                 Request::builder()
                     .method(http::Method::GET)
-                    .uri(format!("/events/{event_id}"))
+                    .uri(format!("/events/{}", event.id))
                     .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
@@ -235,34 +239,29 @@ mod test {
         assert_eq!(event, db_event);
     }
 
-    #[tokio::test]
-    async fn delete() {
+    #[sqlx::test]
+    async fn delete(db: PgPool) {
         let event1 = EventContent {
             program_id: ProgramId::new("program1").unwrap(),
             event_name: Some("event1".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
         let event2 = EventContent {
             program_id: ProgramId::new("program2").unwrap(),
             event_name: Some("event2".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
         let event3 = EventContent {
             program_id: ProgramId::new("program3").unwrap(),
             event_name: Some("event3".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
 
-        let events = vec![
-            Event::new(event1),
-            Event::new(event2.clone()),
-            Event::new(event3),
-        ];
-        let event_id = events[1].id.clone();
-
-        let state = state_with_events(events);
+        let (state, events) = state_with_events(vec![event1, event2.clone(), event3], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
+
+        let event_id = events[1].id.clone();
 
         let request = Request::builder()
             .method(http::Method::DELETE)
@@ -293,11 +292,10 @@ mod test {
         assert_eq!(programs.len(), 2);
     }
 
-    #[tokio::test]
-    async fn update() {
-        let event = Event::new(default_content());
-
-        let state = state_with_events(vec![event.clone()]);
+    #[sqlx::test]
+    async fn update(db: PgPool) {
+        let (state, mut events) = state_with_events(vec![default_event_content()], db).await;
+        let event = events.remove(1);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -315,21 +313,20 @@ mod test {
         assert!(event.modification_date_time < db_program.modification_date_time);
     }
 
-    #[tokio::test]
-    async fn create_same_name() {
-        let state = state_with_events(vec![]);
+    #[sqlx::test]
+    async fn create_same_name(db: PgPool) {
+        let (state, _) = state_with_events(vec![], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
-        let event = Event::new(default_content());
-        let content = event.content;
+        let content = default_event_content();
 
         let request = Request::builder()
             .method(http::Method::POST)
             .uri("/events")
             .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .body(Body::from(serde_json::to_vec(dbg!(&content)).unwrap()))
             .unwrap();
 
         let response = ServiceExt::<Request<Body>>::ready(&mut app)
@@ -374,27 +371,25 @@ mod test {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn retrieve_all_with_filter() {
+    #[sqlx::test]
+    async fn retrieve_all_with_filter(db: PgPool) {
         let event1 = EventContent {
             program_id: ProgramId::new("program1").unwrap(),
             event_name: Some("event1".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
         let event2 = EventContent {
             program_id: ProgramId::new("program2").unwrap(),
             event_name: Some("event2".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
         let event3 = EventContent {
             program_id: ProgramId::new("program3").unwrap(),
             event_name: Some("event3".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
 
-        let events = vec![Event::new(event1), Event::new(event2), Event::new(event3)];
-
-        let state = state_with_events(events);
+        let (state, _) = state_with_events(vec![event1, event2, event3], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 

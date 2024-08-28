@@ -6,6 +6,7 @@ use axum_extra::extract::QueryRejection;
 use openadr_wire::problem::Problem;
 use openadr_wire::IdentifierError;
 use serde::{Deserialize, Serialize};
+use sqlx::error::DatabaseError;
 use tracing::{error, trace, warn};
 use uuid::Uuid;
 
@@ -24,7 +25,9 @@ pub enum AppError {
     #[error("Not implemented {0}")]
     NotImplemented(&'static str),
     #[error("Conflict: {0}")]
-    Conflict(String),
+    Conflict(String, Option<Box<dyn DatabaseError>>),
+    #[error("Unprocessable Content: {0}")]
+    UnprocessableContent(String, Option<Box<dyn DatabaseError>>),
     #[error("Authentication error: {0}")]
     Auth(String),
     #[cfg(feature = "sqlx")]
@@ -46,8 +49,13 @@ impl From<sqlx::Error> for AppError {
         match err {
             sqlx::Error::RowNotFound => Self::NotFound,
             sqlx::Error::Database(err) if err.is_unique_violation() => {
-                trace!(?err);
-                Self::Conflict("Conflict".to_string())
+                Self::Conflict("Conflict".to_string(), Some(err))
+            }
+            sqlx::Error::Database(err) if err.is_foreign_key_violation() => {
+                Self::UnprocessableContent(
+                    "A foreign key constraint is violated".to_string(),
+                    Some(err),
+                )
             }
             _ => Self::Sql(err),
         }
@@ -60,9 +68,8 @@ impl AppError {
 
         match self {
             AppError::Validation(err) => {
-                trace!(
-                    "Error reference: {}, Received invalid request: {}",
-                    reference,
+                trace!(%reference,
+                    "Received invalid request: {}",
                     err
                 );
                 Problem {
@@ -74,9 +81,8 @@ impl AppError {
                 }
             }
             AppError::Json(err) => {
-                trace!(
-                    "Error reference: {}, Received invalid JSON in request: {}",
-                    reference,
+                trace!(%reference,
+                    "Received invalid JSON in request: {}",
                     err
                 );
                 Problem {
@@ -88,9 +94,8 @@ impl AppError {
                 }
             }
             AppError::QueryParams(err) => {
-                trace!(
-                    "Error reference: {}, Received invalid query parameters: {}",
-                    reference,
+                trace!(%reference,
+                    "Received invalid query parameters: {}",
                     err
                 );
                 Problem {
@@ -102,7 +107,7 @@ impl AppError {
                 }
             }
             AppError::NotFound => {
-                trace!("Error reference: {}, Object not found", reference,);
+                trace!(%reference, "Object not found");
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::NOT_FOUND.to_string()),
@@ -112,9 +117,8 @@ impl AppError {
                 }
             }
             AppError::BadRequest(err) => {
-                trace!(
-                    "Error reference: {}, Received invalid request: {}",
-                    reference,
+                trace!(%reference,
+                    "Received invalid request: {}",
                     err
                 );
                 Problem {
@@ -126,7 +130,7 @@ impl AppError {
                 }
             }
             AppError::NotImplemented(err) => {
-                error!("Error reference: {}, Not implemented: {}", reference, err);
+                error!(%reference, "Not implemented: {}", err);
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::NOT_IMPLEMENTED.to_string()),
@@ -135,8 +139,8 @@ impl AppError {
                     instance: Some(reference.to_string()),
                 }
             }
-            AppError::Conflict(err) => {
-                warn!("Error reference: {}, Conflict: {}", reference, err);
+            AppError::Conflict(err, db_err) => {
+                warn!(%reference, "Conflict: {}, DB err: {:?}", err, db_err);
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::CONFLICT.to_string()),
@@ -146,9 +150,8 @@ impl AppError {
                 }
             }
             AppError::Auth(err) => {
-                trace!(
-                    "Error reference: {}, Authentication error: {}",
-                    reference,
+                trace!(%reference,
+                    "Authentication error: {}",
                     err
                 );
                 Problem {
@@ -161,18 +164,18 @@ impl AppError {
             }
             #[cfg(feature = "sqlx")]
             AppError::Sql(err) => {
-                error!("Error reference: {}, SQL error: {}", reference, err);
+                error!(%reference, "SQL error: {}", err);
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
                     status: StatusCode::INTERNAL_SERVER_ERROR,
-                    detail: Some(err.to_string()),
+                    detail: Some("A database error occurred".to_string()),
                     instance: Some(reference.to_string()),
                 }
             }
             #[cfg(feature = "sqlx")]
             AppError::SerdeJsonInternalServerError(err) => {
-                trace!("Error reference: {}, serde json error: {}", reference, err);
+                trace!(%reference, "serde json error: {}", err);
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
@@ -183,7 +186,7 @@ impl AppError {
             }
             #[cfg(feature = "sqlx")]
             AppError::SerdeJsonBadRequest(err) => {
-                trace!("Error reference: {}, serde json error: {}", reference, err);
+                trace!(%reference, "serde json error: {}", err);
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::BAD_REQUEST.to_string()),
@@ -193,15 +196,28 @@ impl AppError {
                 }
             }
             AppError::Identifier(err) => {
-                trace!(
-                    "Error reference: {}, Malformed identifier: {}",
-                    reference,
+                trace!(%reference,
+                    "Malformed identifier: {}",
                     err
                 );
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::BAD_REQUEST.to_string()),
                     status: StatusCode::BAD_REQUEST,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::UnprocessableContent(err, db_err) => {
+                trace!(%reference,
+                    "Unprocessable Content: {}, DB details: {:?}",
+                    err,
+                    db_err
+                );
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::UNPROCESSABLE_ENTITY.to_string()),
+                    status: StatusCode::UNPROCESSABLE_ENTITY,
                     detail: Some(err.to_string()),
                     instance: Some(reference.to_string()),
                 }
