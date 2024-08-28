@@ -4,7 +4,6 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
 use tracing::{info, trace};
 use validator::Validate;
 
@@ -75,7 +74,6 @@ pub async fn delete(
 }
 
 #[derive(Serialize, Deserialize, Validate, Debug)]
-#[skip_serializing_none]
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
     #[serde(rename = "programID")]

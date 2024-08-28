@@ -5,7 +5,7 @@ use axum::Json;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tracing::{info, trace};
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 use openadr_wire::program::{ProgramContent, ProgramId};
 use openadr_wire::target::TargetLabel;
@@ -71,6 +71,7 @@ pub async fn delete(
 }
 
 #[derive(Deserialize, Validate, Debug)]
+#[validate(schema(function = "validate_target_type_value_pair"))]
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
     pub(crate) target_type: Option<TargetLabel>,
@@ -82,6 +83,14 @@ pub struct QueryParams {
     #[validate(range(min = 1, max = 50))]
     #[serde(default = "get_50")]
     pub(crate) limit: i64,
+}
+
+fn validate_target_type_value_pair(query: &QueryParams) -> Result<(), ValidationError> {
+    if query.target_type.is_some() == query.target_values.is_some() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("targetType and targetValues query parameter must either both be set or not set at the same time."))
+    }
 }
 
 fn get_50() -> i64 {

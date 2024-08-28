@@ -4,6 +4,7 @@ use crate::error::AppError;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::event::{EventContent, EventId, Priority};
+use openadr_wire::target::TargetLabel;
 use openadr_wire::Event;
 use sqlx::PgPool;
 use std::str::FromStr;
@@ -107,6 +108,44 @@ impl TryFrom<PostgresEvent> for Event {
     }
 }
 
+#[derive(Default, Debug)]
+struct PostgresFilter<'a> {
+    program_id: Option<&'a str>,
+    ven_names: Option<&'a [String]>,
+    event_names: Option<&'a [String]>,
+    program_names: Option<&'a [String]>,
+    // TODO check whether we also need to extract `PowerServiceLocation`, `ServiceArea`,
+    //  `ResourceNames`, and `Group`, i.e., only leave the `Private`
+    target_type: Option<&'a str>,
+    target_values: Option<&'a [String]>,
+
+    skip: i64,
+    limit: i64,
+}
+
+impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
+    fn from(query: &'a QueryParams) -> Self {
+        let mut filter = Self {
+            program_id: query.program_id.as_ref().map(|id| id.as_str()),
+            skip: query.skip,
+            limit: query.limit,
+            ..Default::default()
+        };
+        match query.target_type {
+            Some(TargetLabel::VENName) => filter.ven_names = query.target_values.as_deref(),
+            Some(TargetLabel::EventName) => filter.event_names = query.target_values.as_deref(),
+            Some(TargetLabel::ProgramName) => filter.program_names = query.target_values.as_deref(),
+            Some(_) => {
+                filter.target_type = query.target_type.as_ref().map(|t| t.as_str());
+                filter.target_values = query.target_values.as_deref()
+            }
+            None => {}
+        };
+
+        filter
+    }
+}
+
 #[async_trait]
 impl Crud for PgEventStorage {
     type Type = Event;
@@ -152,27 +191,36 @@ impl Crud for PgEventStorage {
     }
 
     async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+        let pg_filter: PostgresFilter = filter.into();
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
-            SELECT *
-            FROM event
+            SELECT e.*
+            FROM event e
+              JOIN program p on p.id = e.program_id
             WHERE ($1::text IS NULL OR program_id like $1)
-              AND ($2::text IS NULL OR jsonb_path_query_array(targets, '$[*].type') ? $2)
-              AND ($3::text[] IS NULL OR jsonb_path_query_array(targets, '$[*].values[*]') ?| ($3))
-            OFFSET $4 LIMIT $5
+              AND ($2::text[] IS NULL OR TRUE) -- TODO filter for ven_names
+              AND ($3::text[] IS NULL OR event_name = ANY($3))
+              AND ($4::text[] IS NULL OR p.program_name = ANY($4))
+              AND ($5::text IS NULL OR jsonb_path_query_array(e.targets, '$[*].type') ? $5)
+              AND ($6::text[] IS NULL OR jsonb_path_query_array(e.targets, '$[*].values[*]') ?| ($6))
+            OFFSET $7 LIMIT $8
             "#,
-            filter.program_id.clone().map(|p| p.to_string()),
-            filter.target_type.clone().map(|t| t.to_string()),
-            filter.target_values.as_ref().map(|v| v.as_slice()),
-            filter.skip,
-            filter.limit
+            pg_filter.program_id,
+            pg_filter.ven_names,
+            pg_filter.event_names,
+            pg_filter.program_names,
+            pg_filter.target_type,
+            pg_filter.target_values,
+            pg_filter.skip,
+            pg_filter.limit
         )
-        .fetch_all(&self.db)
-        .await?
-        .into_iter()
-        .map(TryInto::try_into)
-        .collect::<Result<_, _>>()?)
+            .fetch_all(&self.db)
+            .await?
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<_, _>>()?)
     }
 
     async fn update(&self, id: &Self::Id, new: Self::NewType) -> Result<Self::Type, Self::Error> {
@@ -357,63 +405,6 @@ mod tests {
             let events = repo
                 .retrieve_all(&QueryParams {
                     skip: 20,
-                    ..Default::default()
-                })
-                .await
-                .unwrap();
-            assert_eq!(events.len(), 0);
-        }
-
-        #[sqlx::test(fixtures("programs", "events"))]
-        async fn filter_target_type_get_all(db: PgPool) {
-            let repo: PgEventStorage = db.into();
-            let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    ..Default::default()
-                })
-                .await
-                .unwrap();
-            assert_eq!(events.len(), 1);
-            assert_eq!(events, vec![event_1()]);
-
-            let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Private("SOME_TARGET".to_string())),
-                    ..Default::default()
-                })
-                .await
-                .unwrap();
-            assert_eq!(events.len(), 1);
-            assert_eq!(events, vec![event_2()]);
-
-            let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::ProgramName),
-                    ..Default::default()
-                })
-                .await
-                .unwrap();
-            assert_eq!(events.len(), 0);
-        }
-
-        #[sqlx::test(fixtures("programs", "events"))]
-        async fn filter_target_value_get_all(db: PgPool) {
-            let repo: PgEventStorage = db.into();
-
-            let events = repo
-                .retrieve_all(&QueryParams {
-                    target_values: Some(vec!["group-1".to_string()]),
-                    ..Default::default()
-                })
-                .await
-                .unwrap();
-            assert_eq!(events.len(), 1);
-            assert_eq!(events, vec![event_1()]);
-
-            let events = repo
-                .retrieve_all(&QueryParams {
-                    target_values: Some(vec!["not-existent".to_string()]),
                     ..Default::default()
                 })
                 .await

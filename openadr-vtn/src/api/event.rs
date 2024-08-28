@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 use tracing::{info, trace};
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 use openadr_wire::event::EventContent;
 use openadr_wire::event::EventId;
@@ -76,6 +76,7 @@ pub async fn delete(
 }
 
 #[derive(Deserialize, Validate, Debug)]
+#[validate(schema(function = "validate_target_type_value_pair"))]
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
     #[serde(rename = "programID")]
@@ -89,6 +90,14 @@ pub struct QueryParams {
     #[validate(range(min = 1, max = 50))]
     #[serde(default = "get_50")]
     pub(crate) limit: i64,
+}
+
+fn validate_target_type_value_pair(query: &QueryParams) -> Result<(), ValidationError> {
+    if query.target_type.is_some() == query.target_values.is_some() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("targetType and targetValues query parameter must either both be set or not set at the same time."))
+    }
 }
 
 fn get_50() -> i64 {
@@ -142,8 +151,10 @@ mod test {
         Router,
     };
     use http_body_util::BodyExt;
-    use openadr_wire::event::Priority; // for `collect`
-    use tower::{Service, ServiceExt}; // for `call`, `oneshot`, and `ready`
+    // for `collect`
+    use tower::{Service, ServiceExt};
+    // for `call`, `oneshot`, and `ready`
+    use openadr_wire::event::Priority;
 
     fn default_content() -> EventContent {
         EventContent {

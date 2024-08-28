@@ -4,9 +4,10 @@ use crate::error::AppError;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::program::{ProgramContent, ProgramId};
+use openadr_wire::target::TargetLabel;
 use openadr_wire::Program;
 use sqlx::PgPool;
-use tracing::error;
+use tracing::{error, trace};
 
 #[async_trait]
 impl ProgramCrud for PgProgramStorage {}
@@ -113,6 +114,42 @@ impl TryFrom<PostgresProgram> for Program {
     }
 }
 
+#[derive(Debug, Default)]
+struct PostgresFilter<'a> {
+    ven_names: Option<&'a [String]>,
+    event_names: Option<&'a [String]>,
+    program_names: Option<&'a [String]>,
+    // TODO check whether we also need to extract `PowerServiceLocation`, `ServiceArea`,
+    //  `ResourceNames`, and `Group`, i.e., only leave the `Private`
+    target_type: Option<&'a str>,
+    target_values: Option<&'a [String]>,
+
+    skip: i64,
+    limit: i64,
+}
+
+impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
+    fn from(query: &'a QueryParams) -> Self {
+        let mut filter = Self {
+            skip: query.skip,
+            limit: query.limit,
+            ..Default::default()
+        };
+        match query.target_type {
+            Some(TargetLabel::VENName) => filter.ven_names = query.target_values.as_deref(),
+            Some(TargetLabel::EventName) => filter.event_names = query.target_values.as_deref(),
+            Some(TargetLabel::ProgramName) => filter.program_names = query.target_values.as_deref(),
+            Some(_) => {
+                filter.target_type = query.target_type.as_ref().map(|t| t.as_str());
+                filter.target_values = query.target_values.as_deref()
+            }
+            None => {}
+        };
+
+        filter
+    }
+}
+
 #[async_trait]
 impl Crud for PgProgramStorage {
     type Type = Program;
@@ -163,18 +200,44 @@ impl Crud for PgProgramStorage {
     }
 
     async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+        let pg_filter: PostgresFilter = filter.into();
+        trace!(?pg_filter);
+
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
-            SELECT * FROM program
-            WHERE ($1::text IS NULL OR jsonb_path_query_array(targets, '$[*].type') ? $1)
-              AND ($2::text[] IS NULL OR jsonb_path_query_array(targets, '$[*].values[*]') ?| ($2))
-            OFFSET $3 LIMIT $4
+            SELECT p.id AS "id!", 
+                   p.created_date_time AS "created_date_time!", 
+                   p.modification_date_time AS "modification_date_time!",
+                   p.program_name AS "program_name!",
+                   p.program_long_name,
+                   p.retailer_name,
+                   p.retailer_long_name,
+                   p.program_type,
+                   p.country,
+                   p.principal_subdivision,
+                   p.interval_period,
+                   p.program_descriptions,
+                   p.binding_events,
+                   p.local_price,
+                   p.payload_descriptors,
+                   p.targets
+            FROM program p
+              LEFT JOIN event e on p.id = e.program_id
+            WHERE ($1::text[] IS NULL OR TRUE) -- TODO implement filtering based on VEN names
+              AND ($2::text[] IS NULL OR e.event_name = ANY($2))
+              AND ($3::text[] IS NULL OR p.program_name = ANY($3))
+              AND ($4::text IS NULL OR jsonb_path_query_array(p.targets, '$[*].type') ? $4)
+              AND ($5::text[] IS NULL OR jsonb_path_query_array(p.targets, '$[*].values[*]') ?| ($5))
+            OFFSET $6 LIMIT $7
             "#,
-            filter.target_type.clone().map(|t| t.to_string()),
-            filter.target_values.as_ref().map(|v| v.as_slice()),
-            filter.skip,
-            filter.limit
+            pg_filter.ven_names,
+            pg_filter.event_names,
+            pg_filter.program_names,
+            pg_filter.target_type,
+            pg_filter.target_values,
+            pg_filter.skip,
+            pg_filter.limit
         )
         .fetch_all(&self.db)
         .await?

@@ -139,7 +139,7 @@ async fn create_same_name(db: PgPool) {
 
 #[sqlx::test]
 async fn retrieve_all_with_filter(db: PgPool) {
-    let client = common::setup_program_client("program", db).await;
+    let client = common::setup_program_client("program1", db).await;
 
     let event1 = EventContent {
         program_id: client.id().clone(),
@@ -182,6 +182,13 @@ async fn retrieve_all_with_filter(db: PgPool) {
     assert_eq!(events.len(), 2);
 
     // event name
+    // FIXME check what the desired behavior is
+    //  Do we expect a NOT_IMPLEMENTED code,
+    //  because our server does not recognize the "NONSENSE" filter,
+    //  or because there is no value filled in?
+    //  In the first case, I would argue that we just store any private labels
+    //  and also filter on them, even if we don't understand them, in the second case,
+    //  I would expect a BAD_REQUEST status code
     let err = client
         .get_events_request(
             Filter::By(TargetLabel::Private("NONSENSE".to_string()), &[]),
