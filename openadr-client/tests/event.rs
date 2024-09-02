@@ -23,7 +23,7 @@ fn default_content(program_id: &ProgramId) -> EventContent {
     }
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn get(db: PgPool) {
     let client = common::setup_program_client("program", db).await;
     let event_content = default_content(client.id());
@@ -32,7 +32,7 @@ async fn get(db: PgPool) {
     assert_eq!(event_client.content(), &event_content);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn delete(db: PgPool) {
     let client = common::setup_program_client("program", db).await;
 
@@ -67,7 +67,7 @@ async fn delete(db: PgPool) {
     assert_eq!(events.len(), 2);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn update(db: PgPool) {
     let client = common::setup_program_client("program", db).await;
 
@@ -92,7 +92,7 @@ async fn update(db: PgPool) {
     assert!(event.modification_date_time() > creation_date_time);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn update_same_name(db: PgPool) {
     let client = common::setup_program_client("program", db).await;
 
@@ -123,7 +123,7 @@ async fn update_same_name(db: PgPool) {
     assert!(event2.modification_date_time() > creation_date_time);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn create_same_name(db: PgPool) {
     let client = common::setup_program_client("program", db).await;
 
@@ -137,7 +137,7 @@ async fn create_same_name(db: PgPool) {
     let _ = client.create_event(event1).await.unwrap();
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn retrieve_all_with_filter(db: PgPool) {
     let client = common::setup_program_client("program1", db).await;
 
@@ -211,7 +211,7 @@ async fn retrieve_all_with_filter(db: PgPool) {
     assert_eq!(events.len(), 2);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn get_program_events(db: PgPool) {
     let client = common::setup_client(db).await;
 

@@ -5,7 +5,6 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
-use openadr_vtn::data_source::AuthInfo;
 #[cfg(not(feature = "postgres"))]
 use openadr_vtn::data_source::InMemoryStorage;
 #[cfg(feature = "postgres")]
@@ -29,7 +28,6 @@ async fn main() {
 
     #[cfg(not(feature = "sqlx"))]
     let storage = InMemoryStorage::default();
-    storage.auth.write().await.push(AuthInfo::bl_admin());
     let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());
 
     if let Err(e) = axum::serve(listener, state.into_router())

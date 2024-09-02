@@ -3,7 +3,7 @@ use sqlx::PgPool;
 
 mod common;
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn basic_create_read(db: PgPool) -> Result<(), openadr_client::Error> {
     let client = common::setup_client(db).await;
 

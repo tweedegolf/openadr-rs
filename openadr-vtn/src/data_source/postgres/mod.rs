@@ -1,21 +1,21 @@
 use crate::data_source::postgres::event::PgEventStorage;
 use crate::data_source::postgres::program::PgProgramStorage;
 use crate::data_source::postgres::report::PgReportStorage;
-use crate::data_source::{AuthInfo, AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
+use crate::data_source::postgres::user::PgAuthSource;
+use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
 use dotenvy::dotenv;
 use sqlx::PgPool;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tracing::{error, info};
 
 mod event;
 mod program;
 mod report;
+mod user;
 
 #[derive(Clone)]
 pub struct PostgresStorage {
     db: PgPool,
-    pub auth: Arc<RwLock<Vec<AuthInfo>>>,
 }
 
 impl DataSource for PostgresStorage {
@@ -32,16 +32,13 @@ impl DataSource for PostgresStorage {
     }
 
     fn auth(&self) -> Arc<dyn AuthSource> {
-        self.auth.clone() // TODO
+        Arc::<PgAuthSource>::new(self.db.clone().into())
     }
 }
 
 impl PostgresStorage {
     pub fn new(db: PgPool) -> Result<Self, sqlx::Error> {
-        Ok(Self {
-            db,
-            auth: Arc::new(Default::default()),
-        })
+        Ok(Self { db })
     }
 
     pub async fn from_env() -> Result<Self, sqlx::Error> {

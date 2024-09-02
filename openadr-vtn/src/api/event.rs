@@ -138,7 +138,7 @@ impl QueryParams {
 #[cfg(test)]
 mod test {
     use crate::{
-        data_source::{AuthInfo, PostgresStorage},
+        data_source::PostgresStorage,
         jwt::{AuthRole, JwtManager},
         state::AppState,
     };
@@ -187,8 +187,6 @@ mod test {
     ) -> (AppState, Vec<Event>) {
         let store = PostgresStorage::new(db).unwrap();
         let mut events = Vec::new();
-
-        store.auth.try_write().unwrap().push(AuthInfo::bl_admin());
 
         for event in new_events {
             events.push(store.events().create(event.clone()).await.unwrap());
@@ -313,7 +311,7 @@ mod test {
         assert!(event.modification_date_time < db_program.modification_date_time);
     }
 
-    #[sqlx::test(fixtures("programs"))]
+    #[sqlx::test(fixtures("users", "programs"))]
     async fn create_same_name(db: PgPool) {
         let (state, _) = state_with_events(vec![], db).await;
         let token = get_admin_token_from_state(&state);

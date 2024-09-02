@@ -25,7 +25,7 @@ fn default_content() -> ProgramContent {
     }
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn get(db: PgPool) {
     let client = common::setup_client(db).await;
     let program_client = client.create_program(default_content()).await.unwrap();
@@ -33,7 +33,7 @@ async fn get(db: PgPool) {
     assert_eq!(program_client.content(), &default_content());
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn delete(db: PgPool) {
     let client = common::setup_client(db).await;
 
@@ -64,7 +64,7 @@ async fn delete(db: PgPool) {
     assert_eq!(programs.len(), 2);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn update(db: PgPool) {
     let client = common::setup_client(db).await;
 
@@ -89,7 +89,7 @@ async fn update(db: PgPool) {
     assert!(program.modification_date_time() > creation_date_time);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn update_same_name(db: PgPool) {
     let client = common::setup_client(db).await;
 
@@ -123,7 +123,7 @@ async fn update_same_name(db: PgPool) {
     assert!(program2.modification_date_time() == creation_date_time);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn create_same_name(db: PgPool) {
     let client = common::setup_client(db).await;
 
@@ -140,7 +140,7 @@ async fn create_same_name(db: PgPool) {
     assert_eq!(problem.status, StatusCode::CONFLICT);
 }
 
-#[sqlx::test]
+#[sqlx::test(fixtures("users"))]
 async fn retrieve_all_with_filter(db: PgPool) {
     let client = common::setup_client(db).await;
 

@@ -1,5 +1,4 @@
 use openadr_client::{Client, ClientCredentials, MockClientRef, ProgramClient};
-use openadr_vtn::data_source::AuthInfo;
 use openadr_wire::program::ProgramContent;
 use sqlx::PgPool;
 use std::env::VarError;
@@ -9,11 +8,11 @@ use url::Url;
 pub async fn setup_mock_client(db: PgPool) -> Client {
     use openadr_vtn::{data_source::PostgresStorage, jwt::JwtManager, state::AppState};
 
-    let auth_info = AuthInfo::bl_admin();
+    // let auth_info = AuthInfo::bl_admin();
     let client_credentials = ClientCredentials::admin();
 
     let storage = PostgresStorage::new(db).unwrap();
-    storage.auth.try_write().unwrap().push(auth_info);
+    // storage.auth.try_write().unwrap().push(auth_info);
 
     let app_state = AppState::new(storage, JwtManager::from_secret(b"test"));
 

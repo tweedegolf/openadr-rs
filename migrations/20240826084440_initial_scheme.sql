@@ -65,3 +65,27 @@ create table report
 
 create unique index report_report_name_uindex
     on report (report_name);
+
+create table "user"
+(
+    -- TODO maybe add a (human friendly) name or reference
+    id text not null
+        constraint user_pk
+            primary key
+);
+
+create table user_roles
+(
+    user_id text not null references "user" (id),
+    role    jsonb not null
+);
+
+create table user_credentials
+(
+    user_id       text not null references "user" (id),
+    client_id     text not null
+        constraint user_credentials_pk
+            primary key,
+    client_secret text not null
+    -- TODO maybe the credentials require their own role?
+)

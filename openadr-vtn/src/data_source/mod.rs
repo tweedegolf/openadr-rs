@@ -11,7 +11,6 @@ use openadr_wire::{
     Event, Program, Report,
 };
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 #[cfg(not(feature = "sqlx"))]
 pub use memory::InMemoryStorage;
@@ -83,25 +82,4 @@ pub struct AuthInfo {
     pub client_id: String,
     pub client_secret: String,
     pub roles: Vec<AuthRole>,
-}
-
-impl AuthInfo {
-    pub fn bl_admin() -> Self {
-        Self {
-            client_id: "admin".to_string(),
-            client_secret: "admin".to_string(),
-            roles: vec![AuthRole::AnyBusiness, AuthRole::UserManager],
-        }
-    }
-}
-
-#[async_trait]
-impl AuthSource for RwLock<Vec<AuthInfo>> {
-    async fn get_user(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo> {
-        self.read()
-            .await
-            .iter()
-            .find(|auth| auth.client_id == client_id && auth.client_secret == client_secret)
-            .cloned()
-    }
 }
