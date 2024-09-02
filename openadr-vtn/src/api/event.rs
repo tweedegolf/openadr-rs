@@ -160,7 +160,7 @@ mod test {
     fn default_event_content() -> EventContent {
         EventContent {
             object_type: None,
-            program_id: ProgramId::new("program_id").unwrap(),
+            program_id: ProgramId::new("program-1").unwrap(),
             event_name: Some("event_name".to_string()),
             priority: Priority::MAX,
             report_descriptors: None,
@@ -212,7 +212,7 @@ mod test {
             .unwrap()
     }
 
-    #[sqlx::test]
+    #[sqlx::test(fixtures("programs"))]
     async fn get(db: PgPool) {
         let (state, mut events) = state_with_events(vec![default_event_content()], db).await;
         let event = events.remove(0);
@@ -239,20 +239,20 @@ mod test {
         assert_eq!(event, db_event);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(fixtures("programs"))]
     async fn delete(db: PgPool) {
         let event1 = EventContent {
-            program_id: ProgramId::new("program1").unwrap(),
+            program_id: ProgramId::new("program-1").unwrap(),
             event_name: Some("event1".to_string()),
             ..default_event_content()
         };
         let event2 = EventContent {
-            program_id: ProgramId::new("program2").unwrap(),
+            program_id: ProgramId::new("program-2").unwrap(),
             event_name: Some("event2".to_string()),
             ..default_event_content()
         };
         let event3 = EventContent {
-            program_id: ProgramId::new("program3").unwrap(),
+            program_id: ProgramId::new("program-2").unwrap(),
             event_name: Some("event3".to_string()),
             ..default_event_content()
         };
@@ -292,10 +292,10 @@ mod test {
         assert_eq!(programs.len(), 2);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(fixtures("programs"))]
     async fn update(db: PgPool) {
         let (state, mut events) = state_with_events(vec![default_event_content()], db).await;
-        let event = events.remove(1);
+        let event = events.remove(0);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -313,7 +313,7 @@ mod test {
         assert!(event.modification_date_time < db_program.modification_date_time);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(fixtures("programs"))]
     async fn create_same_name(db: PgPool) {
         let (state, _) = state_with_events(vec![], db).await;
         let token = get_admin_token_from_state(&state);
@@ -371,20 +371,20 @@ mod test {
             .unwrap()
     }
 
-    #[sqlx::test]
+    #[sqlx::test(fixtures("programs"))]
     async fn retrieve_all_with_filter(db: PgPool) {
         let event1 = EventContent {
-            program_id: ProgramId::new("program1").unwrap(),
+            program_id: ProgramId::new("program-1").unwrap(),
             event_name: Some("event1".to_string()),
             ..default_event_content()
         };
         let event2 = EventContent {
-            program_id: ProgramId::new("program2").unwrap(),
+            program_id: ProgramId::new("program-2").unwrap(),
             event_name: Some("event2".to_string()),
             ..default_event_content()
         };
         let event3 = EventContent {
-            program_id: ProgramId::new("program3").unwrap(),
+            program_id: ProgramId::new("program-2").unwrap(),
             event_name: Some("event3".to_string()),
             ..default_event_content()
         };
