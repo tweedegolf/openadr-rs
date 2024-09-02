@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::fmt::Display;
 use std::str::FromStr;
-use uuid::Uuid;
 
 use crate::event::EventPayloadDescriptor;
 use crate::interval::IntervalPeriod;
@@ -40,17 +39,6 @@ pub struct Program {
 
     #[serde(flatten)]
     pub content: ProgramContent,
-}
-
-impl Program {
-    pub fn new(content: ProgramContent) -> Self {
-        Self {
-            id: ProgramId(format!("program-{}", Uuid::new_v4()).parse().unwrap()),
-            created_date_time: Utc::now(),
-            modification_date_time: Utc::now(),
-            content,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

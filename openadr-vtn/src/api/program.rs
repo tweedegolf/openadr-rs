@@ -119,22 +119,25 @@ impl QueryParams {
 }
 
 #[cfg(test)]
-#[cfg(not(feature = "sqlx"))] //FIXME make these tests compatible with any storage backend
 mod test {
     use crate::{
-        data_source::{AuthInfo, InMemoryStorage},
+        data_source::PostgresStorage,
         jwt::{AuthRole, JwtManager},
         state::AppState,
     };
 
     use super::*;
+    // for `collect`
+    use crate::data_source::DataSource;
     use axum::{
         body::Body,
         http::{self, Request, Response, StatusCode},
         Router,
     };
-    use http_body_util::BodyExt; // for `collect`
-    use tower::{Service, ServiceExt}; // for `call`, `oneshot`, and `ready`
+    use http_body_util::BodyExt;
+    use sqlx::PgPool;
+    use tower::{Service, ServiceExt};
+    // for `call`, `oneshot`, and `ready`
 
     fn default_content() -> ProgramContent {
         ProgramContent {
@@ -166,19 +169,23 @@ mod test {
             .unwrap()
     }
 
-    fn state_with_programs(programs: Vec<Program>) -> AppState {
-        let store = InMemoryStorage::default();
+    async fn state_with_programs(
+        new_programs: Vec<ProgramContent>,
+        db: PgPool,
+    ) -> (AppState, Vec<Program>) {
+        let store = PostgresStorage::new(db).unwrap();
+        let mut programs = Vec::new();
 
-        store.auth.try_write().unwrap().push(AuthInfo::bl_admin());
-
-        {
-            let mut writer = store.programs.try_write().unwrap();
-            for program in programs {
-                writer.insert(program.id.clone(), program);
-            }
+        for program in new_programs {
+            let p = store.programs().create(program.clone()).await.unwrap();
+            assert_eq!(p.content, program);
+            programs.push(p);
         }
 
-        AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
+        (
+            AppState::new(store, JwtManager::from_base64_secret("test").unwrap()),
+            programs,
+        )
     }
 
     fn get_admin_token_from_state(state: &AppState) -> String {
@@ -192,12 +199,10 @@ mod test {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn get() {
-        let program = Program::new(default_content());
-        let program_id = program.id.clone();
-
-        let state = state_with_programs(vec![program.clone()]);
+    #[sqlx::test(fixtures("users"))]
+    async fn get(db: PgPool) {
+        let (state, mut programs) = state_with_programs(vec![default_content()], db).await;
+        let program = programs.remove(0);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -205,7 +210,7 @@ mod test {
             .oneshot(
                 Request::builder()
                     .method(http::Method::GET)
-                    .uri(format!("/programs/{program_id}"))
+                    .uri(format!("/programs/{}", program.id))
                     .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
@@ -221,8 +226,8 @@ mod test {
         assert_eq!(program, db_program);
     }
 
-    #[tokio::test]
-    async fn delete() {
+    #[sqlx::test(fixtures("users"))]
+    async fn delete(db: PgPool) {
         let program1 = ProgramContent {
             program_name: "program1".to_string(),
             ..default_content()
@@ -236,14 +241,9 @@ mod test {
             ..default_content()
         };
 
-        let programs = vec![
-            Program::new(program1),
-            Program::new(program2.clone()),
-            Program::new(program3),
-        ];
-        let program_id = programs[1].id.clone();
 
-        let state = state_with_programs(programs);
+        let (state, programs) = state_with_programs(vec![program1, program2.clone(), program3], db).await;
+        let program_id = programs[1].id.clone();
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
@@ -276,11 +276,10 @@ mod test {
         assert_eq!(programs.len(), 2);
     }
 
-    #[tokio::test]
-    async fn update() {
-        let program = Program::new(default_content());
-
-        let state = state_with_programs(vec![program.clone()]);
+    #[sqlx::test(fixtures("users"))]
+    async fn update(db: PgPool) {
+        let (state, mut programs) = state_with_programs(vec![default_content()], db).await;
+        let program = programs.remove(0);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -298,40 +297,45 @@ mod test {
         assert!(program.modification_date_time < db_program.modification_date_time);
     }
 
-    #[tokio::test]
-    async fn update_same_name() {
-        let program = Program::new(default_content());
-
-        let state = state_with_programs(vec![program.clone()]);
+    #[sqlx::test(fixtures("users"))]
+    async fn update_same_name(db: PgPool) {
+        let program1 = ProgramContent {
+            program_name: "program1".to_string(),
+            ..default_content()
+        };
+        let program2 = ProgramContent {
+            program_name: "program2".to_string(),
+            ..default_content()
+        };
+        
+        let (state, mut programs) = state_with_programs(vec![program1, program2], db).await;
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
+        
+        let mut updated = programs.remove(0);
+        updated.content.program_name = "program2".to_string();
 
-        // different id, same (default) name
-        let program = Program::new(default_content());
-
+        // different id, same name
         let response = app
-            .oneshot(program_request(http::Method::PUT, program.clone(), &token))
+            .oneshot(program_request(http::Method::PUT, updated, &token))
             .await
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::CONFLICT);
     }
 
-    #[tokio::test]
-    async fn create_same_name() {
-        let state = state_with_programs(vec![]);
+    #[sqlx::test(fixtures("users"))]
+    async fn create_same_name(db: PgPool) {
+        let (state, _) = state_with_programs(vec![], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
-
-        let program = Program::new(default_content());
-        let content = program.content;
 
         let request = Request::builder()
             .method(http::Method::POST)
             .uri("/programs")
             .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .body(Body::from(serde_json::to_vec(&default_content()).unwrap()))
             .unwrap();
 
         let response = ServiceExt::<Request<Body>>::ready(&mut app)
@@ -347,7 +351,7 @@ mod test {
             .uri("/programs")
             .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .body(Body::from(serde_json::to_vec(&default_content()).unwrap()))
             .unwrap();
 
         let response = app.oneshot(request).await.unwrap();
@@ -375,8 +379,8 @@ mod test {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn retrieve_all_with_filter() {
+    #[sqlx::test(fixtures("users"))]
+    async fn retrieve_all_with_filter(db: PgPool) {
         let program1 = ProgramContent {
             program_name: "program1".to_string(),
             ..default_content()
@@ -390,13 +394,7 @@ mod test {
             ..default_content()
         };
 
-        let programs = vec![
-            Program::new(program1),
-            Program::new(program2),
-            Program::new(program3),
-        ];
-
-        let state = state_with_programs(programs);
+        let (state, _) = state_with_programs(vec![program1, program2, program3], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
