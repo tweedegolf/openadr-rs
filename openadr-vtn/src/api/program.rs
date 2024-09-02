@@ -241,8 +241,8 @@ mod test {
             ..default_content()
         };
 
-
-        let (state, programs) = state_with_programs(vec![program1, program2.clone(), program3], db).await;
+        let (state, programs) =
+            state_with_programs(vec![program1, program2.clone(), program3], db).await;
         let program_id = programs[1].id.clone();
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
@@ -307,11 +307,11 @@ mod test {
             program_name: "program2".to_string(),
             ..default_content()
         };
-        
+
         let (state, mut programs) = state_with_programs(vec![program1, program2], db).await;
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
-        
+
         let mut updated = programs.remove(0);
         updated.content.program_name = "program2".to_string();
 

@@ -3,7 +3,9 @@ use crate::data_source::postgres::program::PgProgramStorage;
 use crate::data_source::postgres::report::PgReportStorage;
 use crate::data_source::postgres::user::PgAuthSource;
 use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
+use crate::error::AppError;
 use dotenvy::dotenv;
+use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -65,4 +67,9 @@ impl PostgresStorage {
                 )
             })
     }
+}
+
+fn to_json_value<T: Serialize>(v: Option<T>) -> Result<Option<serde_json::Value>, AppError> {
+    v.map(|v| serde_json::to_value(v).map_err(AppError::SerdeJsonBadRequest))
+        .transpose()
 }

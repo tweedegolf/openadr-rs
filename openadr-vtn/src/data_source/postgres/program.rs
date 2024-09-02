@@ -1,4 +1,5 @@
 use crate::api::program::QueryParams;
+use crate::data_source::postgres::to_json_value;
 use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
 use axum::async_trait;
@@ -173,13 +174,12 @@ impl Crud for PgProgramStorage {
             new.program_type,
             new.country,
             new.principal_subdivision,
-            // TODO this will serialize 'null' as JSON in the DB instead of using the NULL from the DB
-            serde_json::to_value(new.interval_period).map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(new.program_descriptions).map_err(AppError::SerdeJsonBadRequest)?,
+            to_json_value(new.interval_period)?,
+            to_json_value(new.program_descriptions)?,
             new.binding_events,
             new.local_price,
-            serde_json::to_value(new.payload_descriptors).map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(new.targets).map_err(AppError::SerdeJsonBadRequest)?,
+            to_json_value(new.payload_descriptors)?,
+            to_json_value(new.targets)?,
         )
             .fetch_one(&self.db)
             .await?
@@ -276,13 +276,12 @@ impl Crud for PgProgramStorage {
             new.program_type,
             new.country,
             new.principal_subdivision,
-            serde_json::to_value(new.interval_period).map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(new.program_descriptions)
-                .map_err(AppError::SerdeJsonBadRequest)?,
+            to_json_value(new.interval_period)?,
+            to_json_value(new.program_descriptions)?,
             new.binding_events,
             new.local_price,
-            serde_json::to_value(new.payload_descriptors).map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(new.targets).map_err(AppError::SerdeJsonBadRequest)?,
+            to_json_value(new.payload_descriptors)?,
+            to_json_value(new.targets)?,
         )
         .fetch_one(&self.db)
         .await?

@@ -1,4 +1,5 @@
 use crate::api::report::QueryParams;
+use crate::data_source::postgres::to_json_value;
 use crate::data_source::{Crud, ReportCrud};
 use crate::error::AppError;
 use axum::async_trait;
@@ -90,7 +91,7 @@ impl Crud for PgReportStorage {
             new.event_id.as_str(),
             new.client_name,
             new.report_name,
-            serde_json::to_value(new.payload_descriptors).map_err(AppError::SerdeJsonBadRequest)?,
+            to_json_value(new.payload_descriptors)?,
             serde_json::to_value(new.resources).map_err(AppError::SerdeJsonBadRequest)?,
         )
             .fetch_one(&self.db)
@@ -154,7 +155,7 @@ impl Crud for PgReportStorage {
             new.event_id.as_str(),
             new.client_name,
             new.report_name,
-            serde_json::to_value(new.payload_descriptors).map_err(AppError::SerdeJsonBadRequest)?,
+            to_json_value(new.payload_descriptors)?,
             serde_json::to_value(new.resources).map_err(AppError::SerdeJsonBadRequest)?,
         )
         .fetch_one(&self.db)

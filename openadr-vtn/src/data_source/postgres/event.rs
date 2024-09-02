@@ -1,4 +1,5 @@
 use crate::api::event::QueryParams;
+use crate::data_source::postgres::to_json_value;
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
 use axum::async_trait;
@@ -165,10 +166,10 @@ impl Crud for PgEventStorage {
             new.program_id.as_str(),
             new.event_name,
             Into::<Option<i64>>::into(new.priority),
-            serde_json::to_value(&new.targets).map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(&new.report_descriptors).map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(&new.payload_descriptors).map_err( AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(&new.interval_period).map_err(AppError::SerdeJsonBadRequest)?,
+            to_json_value(new.targets)?,
+            to_json_value(new.report_descriptors)?,
+            to_json_value(new.payload_descriptors)?,
+            to_json_value(new.interval_period)?,
             serde_json::to_value(&new.intervals).map_err(AppError::SerdeJsonBadRequest)?,
         )
             .fetch_one(&self.db)
@@ -244,11 +245,10 @@ impl Crud for PgEventStorage {
             new.program_id.as_str(),
             new.event_name,
             Into::<Option<i64>>::into(new.priority),
-            serde_json::to_value(&new.targets).map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(&new.report_descriptors).map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(&new.payload_descriptors)
-                .map_err(AppError::SerdeJsonBadRequest)?,
-            serde_json::to_value(&new.interval_period).map_err(AppError::SerdeJsonBadRequest)?,
+            to_json_value(new.targets)?,
+            to_json_value(new.report_descriptors)?,
+            to_json_value(new.payload_descriptors)?,
+            to_json_value(new.interval_period)?,
             serde_json::to_value(&new.intervals).map_err(AppError::SerdeJsonBadRequest)?,
         )
         .fetch_one(&self.db)
