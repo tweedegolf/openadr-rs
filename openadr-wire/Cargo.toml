@@ -14,7 +14,6 @@ rust-version.workspace = true
 serde.workspace = true
 chrono.workspace = true
 serde_with.workspace  = true
-uuid.workspace = true
 iso8601-duration.workspace = true
 thiserror.workspace = true
 http.workspace = true

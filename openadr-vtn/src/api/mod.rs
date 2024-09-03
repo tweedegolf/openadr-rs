@@ -59,6 +59,7 @@ mod test {
     use crate::jwt::AuthRole;
     use crate::state::AppState;
 
+    #[allow(dead_code)]
     pub(crate) fn get_admin_token_from_state(state: &AppState) -> String {
         state
             .jwt_manager
