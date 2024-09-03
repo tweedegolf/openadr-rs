@@ -50,6 +50,24 @@ pub struct Claims {
     pub roles: Vec<AuthRole>,
 }
 
+#[cfg(test)]
+#[cfg(feature = "live-db-test")]
+impl Claims {
+    pub(crate) fn new(roles: Vec<AuthRole>) -> Self {
+        Self {
+            exp: 0,
+            nbf: 0,
+            sub: "".to_string(),
+            roles,
+        }
+    }
+
+    pub(crate) fn any_business_user() -> Claims {
+        Claims::new(vec![AuthRole::AnyBusiness])
+    }
+}
+
+#[derive(Debug)]
 pub enum BusinessIds {
     Specific(Vec<String>),
     Any,

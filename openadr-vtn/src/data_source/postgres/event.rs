@@ -2,6 +2,7 @@ use crate::api::event::QueryParams;
 use crate::data_source::postgres::to_json_value;
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
+use crate::jwt::Claims;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::event::{EventContent, EventId, Priority};
@@ -154,8 +155,13 @@ impl Crud for PgEventStorage {
     type NewType = EventContent;
     type Error = AppError;
     type Filter = QueryParams;
+    type PermissionFilter = Claims;
 
-    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn create(
+        &self,
+        new: Self::NewType,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -178,7 +184,11 @@ impl Crud for PgEventStorage {
         )
     }
 
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn retrieve(
+        &self,
+        id: &Self::Id,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -191,7 +201,11 @@ impl Crud for PgEventStorage {
         .try_into()?)
     }
 
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+    async fn retrieve_all(
+        &self,
+        filter: &Self::Filter,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Vec<Self::Type>, Self::Error> {
         let pg_filter: PostgresFilter = filter.into();
 
         Ok(sqlx::query_as!(
@@ -224,7 +238,12 @@ impl Crud for PgEventStorage {
             .collect::<Result<_, _>>()?)
     }
 
-    async fn update(&self, id: &Self::Id, new: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn update(
+        &self,
+        id: &Self::Id,
+        new: Self::NewType,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -256,7 +275,11 @@ impl Crud for PgEventStorage {
         .try_into()?)
     }
 
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn delete(
+        &self,
+        id: &Self::Id,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -279,6 +302,7 @@ mod tests {
     use crate::data_source::postgres::event::PgEventStorage;
     use crate::data_source::Crud;
     use crate::error::AppError;
+    use crate::jwt::Claims;
     use chrono::{DateTime, Duration, Utc};
     use openadr_wire::event::{EventContent, EventInterval, EventType, EventValuesMap};
     use openadr_wire::interval::IntervalPeriod;
@@ -370,7 +394,10 @@ mod tests {
         #[sqlx::test(fixtures("programs", "events"))]
         async fn default_get_all(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let events = repo.retrieve_all(&Default::default()).await.unwrap();
+            let events = repo
+                .retrieve_all(&Default::default(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(events.len(), 2);
             assert_eq!(events, vec![event_1(), event_2()]);
         }
@@ -379,10 +406,13 @@ mod tests {
         async fn limit_get_all(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let events = repo
-                .retrieve_all(&QueryParams {
-                    limit: 1,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        limit: 1,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
@@ -393,20 +423,26 @@ mod tests {
         async fn skip_get_all(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let events = repo
-                .retrieve_all(&QueryParams {
-                    skip: 1,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 1,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_2()]);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    skip: 20,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 20,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
@@ -417,53 +453,68 @@ mod tests {
             let repo: PgEventStorage = db.into();
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["group-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["group-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_1()]);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Private("SOME_TARGET".to_string())),
-                    target_values: Some(vec!["target-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Private("SOME_TARGET".to_string())),
+                        target_values: Some(vec!["target-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_2()]);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["not-existent".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Private("NOT_EXISTENT".to_string())),
-                    target_values: Some(vec!["target-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Private("NOT_EXISTENT".to_string())),
+                        target_values: Some(vec!["target-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["target-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["target-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
@@ -474,31 +525,40 @@ mod tests {
             let repo: PgEventStorage = db.into();
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    program_id: Some("program-1".parse().unwrap()),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        program_id: Some("program-1".parse().unwrap()),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_1()]);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    program_id: Some("program-1".parse().unwrap()),
-                    target_type: Some(TargetLabel::Group),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        program_id: Some("program-1".parse().unwrap()),
+                        target_type: Some(TargetLabel::Group),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_1()]);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    program_id: Some("not-existent".parse().unwrap()),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        program_id: Some("not-existent".parse().unwrap()),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
@@ -511,14 +571,22 @@ mod tests {
         #[sqlx::test(fixtures("programs", "events"))]
         async fn get_existing(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.retrieve(&"event-1".parse().unwrap()).await.unwrap();
+            let event = repo
+                .retrieve(&"event-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event, event_1());
         }
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn get_not_existing(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.retrieve(&"not-existent".parse().unwrap()).await;
+            let event = repo
+                .retrieve(
+                    &"not-existent".parse().unwrap(),
+                    &Claims::any_business_user(),
+                )
+                .await;
             assert!(matches!(event, Err(AppError::NotFound)));
         }
     }
@@ -529,7 +597,10 @@ mod tests {
         #[sqlx::test(fixtures("programs"))]
         async fn add(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.create(event_1().content).await.unwrap();
+            let event = repo
+                .create(event_1().content, &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event.content, event_1().content);
             assert!(event.created_date_time < Utc::now() + Duration::minutes(10));
             assert!(event.created_date_time > Utc::now() - Duration::minutes(10));
@@ -540,7 +611,9 @@ mod tests {
         #[sqlx::test(fixtures("programs", "events"))]
         async fn add_existing_conflict_name(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.create(event_1().content).await;
+            let event = repo
+                .create(event_1().content, &Claims::any_business_user())
+                .await;
             assert!(event.is_ok());
         }
     }
@@ -552,7 +625,11 @@ mod tests {
         async fn updates_modify_time(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let event = repo
-                .update(&"event-1".parse().unwrap(), event_1().content)
+                .update(
+                    &"event-1".parse().unwrap(),
+                    event_1().content,
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(event.content, event_1().content);
@@ -572,11 +649,18 @@ mod tests {
             let mut updated = event_2().content;
             updated.event_name = Some("updated-name".to_string());
             let event = repo
-                .update(&"event-1".parse().unwrap(), updated.clone())
+                .update(
+                    &"event-1".parse().unwrap(),
+                    updated.clone(),
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(event.content, updated);
-            let event = repo.retrieve(&"event-1".parse().unwrap()).await.unwrap();
+            let event = repo
+                .retrieve(&"event-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event.content, updated);
         }
 
@@ -584,7 +668,11 @@ mod tests {
         async fn update_name_conflict(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let event = repo
-                .update(&"event-1".parse().unwrap(), event_2().content)
+                .update(
+                    &"event-1".parse().unwrap(),
+                    event_2().content,
+                    &Claims::any_business_user(),
+                )
                 .await;
             assert!(event.is_ok());
         }
@@ -596,20 +684,33 @@ mod tests {
         #[sqlx::test(fixtures("programs", "events"))]
         async fn delete_existing(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.delete(&"event-1".parse().unwrap()).await.unwrap();
+            let event = repo
+                .delete(&"event-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event, event_1());
 
-            let event = repo.retrieve(&"event-1".parse().unwrap()).await;
+            let event = repo
+                .retrieve(&"event-1".parse().unwrap(), &Claims::any_business_user())
+                .await;
             assert!(matches!(event, Err(AppError::NotFound)));
 
-            let event = repo.retrieve(&"event-2".parse().unwrap()).await.unwrap();
+            let event = repo
+                .retrieve(&"event-2".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event, event_2());
         }
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn delete_not_existing(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.delete(&"not-existent".parse().unwrap()).await;
+            let event = repo
+                .delete(
+                    &"not-existent".parse().unwrap(),
+                    &Claims::any_business_user(),
+                )
+                .await;
             assert!(matches!(event, Err(AppError::NotFound)));
         }
     }

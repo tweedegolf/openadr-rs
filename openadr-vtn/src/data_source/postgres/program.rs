@@ -2,6 +2,7 @@ use crate::api::program::QueryParams;
 use crate::data_source::postgres::to_json_value;
 use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
+use crate::jwt::{BusinessIds, Claims, User};
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::program::{ProgramContent, ProgramId};
@@ -129,6 +130,22 @@ struct PostgresFilter<'a> {
     limit: i64,
 }
 
+#[derive(Debug)]
+struct PgPermissionFilter {
+    business_ids: Option<Vec<String>>,
+}
+
+impl From<&User> for PgPermissionFilter {
+    fn from(User(ref claims): &User) -> Self {
+        let business_ids = match claims.business_ids() {
+            BusinessIds::Specific(v) => Some(v),
+            BusinessIds::Any => None,
+        };
+
+        Self { business_ids }
+    }
+}
+
 impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
     fn from(query: &'a QueryParams) -> Self {
         let mut filter = Self {
@@ -158,8 +175,13 @@ impl Crud for PgProgramStorage {
     type NewType = ProgramContent;
     type Error = AppError;
     type Filter = QueryParams;
+    type PermissionFilter = Claims;
 
-    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn create(
+        &self,
+        new: Self::NewType,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
@@ -186,7 +208,11 @@ impl Crud for PgProgramStorage {
             .try_into()?)
     }
 
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn retrieve(
+        &self,
+        id: &Self::Id,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
@@ -199,7 +225,11 @@ impl Crud for PgProgramStorage {
         .try_into()?)
     }
 
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+    async fn retrieve_all(
+        &self,
+        filter: &Self::Filter,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Vec<Self::Type>, Self::Error> {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
 
@@ -237,7 +267,7 @@ impl Crud for PgProgramStorage {
             pg_filter.target_type,
             pg_filter.target_values,
             pg_filter.skip,
-            pg_filter.limit
+            pg_filter.limit,
         )
         .fetch_all(&self.db)
         .await?
@@ -246,7 +276,12 @@ impl Crud for PgProgramStorage {
         .collect::<Result<_, _>>()?)
     }
 
-    async fn update(&self, id: &Self::Id, new: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn update(
+        &self,
+        id: &Self::Id,
+        new: Self::NewType,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
@@ -288,7 +323,11 @@ impl Crud for PgProgramStorage {
         .try_into()?)
     }
 
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn delete(
+        &self,
+        id: &Self::Id,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
@@ -309,6 +348,7 @@ mod tests {
     use crate::data_source::postgres::program::PgProgramStorage;
     use crate::data_source::Crud;
     use crate::error::AppError;
+    use crate::jwt::Claims;
     use openadr_wire::event::{EventPayloadDescriptor, EventType};
     use openadr_wire::interval::IntervalPeriod;
     use openadr_wire::program::{PayloadDescriptor, ProgramContent, ProgramDescription};
@@ -393,7 +433,10 @@ mod tests {
         #[sqlx::test(fixtures("programs"))]
         async fn default_get_all(db: PgPool) {
             let repo: PgProgramStorage = db.into();
-            let programs = repo.retrieve_all(&Default::default()).await.unwrap();
+            let programs = repo
+                .retrieve_all(&Default::default(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(programs.len(), 2);
             assert_eq!(programs, vec![program_2(), program_1()]);
         }
@@ -402,10 +445,13 @@ mod tests {
         async fn limit_get_all(db: PgPool) {
             let repo: PgProgramStorage = db.into();
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    limit: 1,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        limit: 1,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 1);
@@ -415,19 +461,25 @@ mod tests {
         async fn skip_get_all(db: PgPool) {
             let repo: PgProgramStorage = db.into();
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    skip: 1,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 1,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 1);
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    skip: 2,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 2,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 0);
@@ -438,42 +490,54 @@ mod tests {
             let repo: PgProgramStorage = db.into();
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["group-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["group-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 1);
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["not-existent".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 0);
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::ProgramName),
-                    target_values: Some(vec!["program-2".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::ProgramName),
+                        target_values: Some(vec!["program-2".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 1);
             assert_eq!(programs, vec![program_2()]);
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::ProgramName),
-                    target_values: Some(vec!["program-not-existent".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::ProgramName),
+                        target_values: Some(vec!["program-not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 0);
@@ -487,7 +551,10 @@ mod tests {
         async fn get_existing(db: PgPool) {
             let repo: PgProgramStorage = db.into();
 
-            let program = repo.retrieve(&"program-1".parse().unwrap()).await.unwrap();
+            let program = repo
+                .retrieve(&"program-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(program, program_1());
         }
 
@@ -495,7 +562,10 @@ mod tests {
         async fn get_not_existent(db: PgPool) {
             let repo: PgProgramStorage = db.into();
             let program = repo
-                .retrieve(&"program-not-existent".parse().unwrap())
+                .retrieve(
+                    &"program-not-existent".parse().unwrap(),
+                    &Claims::any_business_user(),
+                )
                 .await;
 
             assert!(matches!(program, Err(AppError::NotFound)));
@@ -510,7 +580,10 @@ mod tests {
         async fn add(db: PgPool) {
             let repo: PgProgramStorage = db.into();
 
-            let program = repo.create(program_1().content).await.unwrap();
+            let program = repo
+                .create(program_1().content, &Claims::any_business_user())
+                .await
+                .unwrap();
             assert!(program.created_date_time < Utc::now() + Duration::minutes(10));
             assert!(program.created_date_time > Utc::now() - Duration::minutes(10));
             assert!(program.modification_date_time < Utc::now() + Duration::minutes(10));
@@ -521,7 +594,9 @@ mod tests {
         async fn add_existing_name(db: PgPool) {
             let repo: PgProgramStorage = db.into();
 
-            let program = repo.create(program_1().content).await;
+            let program = repo
+                .create(program_1().content, &Claims::any_business_user())
+                .await;
             assert!(matches!(program, Err(AppError::Conflict(_, _))));
         }
     }
@@ -534,7 +609,11 @@ mod tests {
         async fn updates_modify_time(db: PgPool) {
             let repo: PgProgramStorage = db.into();
             let program = repo
-                .update(&"program-1".parse().unwrap(), program_1().content)
+                .update(
+                    &"program-1".parse().unwrap(),
+                    program_1().content,
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
 
@@ -556,12 +635,19 @@ mod tests {
             updated.program_name = "updated_name".parse().unwrap();
 
             let program = repo
-                .update(&"program-1".parse().unwrap(), updated.clone())
+                .update(
+                    &"program-1".parse().unwrap(),
+                    updated.clone(),
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
 
             assert_eq!(program.content, updated);
-            let program = repo.retrieve(&"program-1".parse().unwrap()).await.unwrap();
+            let program = repo
+                .retrieve(&"program-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(program.content, updated);
         }
     }
@@ -572,20 +658,33 @@ mod tests {
         #[sqlx::test(fixtures("programs"))]
         async fn delete_existing(db: PgPool) {
             let repo: PgProgramStorage = db.into();
-            let program = repo.delete(&"program-1".parse().unwrap()).await.unwrap();
+            let program = repo
+                .delete(&"program-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(program, program_1());
 
-            let program = repo.retrieve(&"program-1".parse().unwrap()).await;
+            let program = repo
+                .retrieve(&"program-1".parse().unwrap(), &Claims::any_business_user())
+                .await;
             assert!(matches!(program, Err(AppError::NotFound)));
 
-            let program = repo.retrieve(&"program-2".parse().unwrap()).await.unwrap();
+            let program = repo
+                .retrieve(&"program-2".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(program, program_2());
         }
 
         #[sqlx::test(fixtures("programs"))]
         async fn delete_not_existing(db: PgPool) {
             let repo: PgProgramStorage = db.into();
-            let program = repo.delete(&"program-not-existing".parse().unwrap()).await;
+            let program = repo
+                .delete(
+                    &"program-not-existing".parse().unwrap(),
+                    &Claims::any_business_user(),
+                )
+                .await;
             assert!(matches!(program, Err(AppError::NotFound)));
         }
     }

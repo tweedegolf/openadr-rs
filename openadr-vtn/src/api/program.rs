@@ -19,11 +19,11 @@ use crate::jwt::{BusinessUser, User};
 pub async fn get_all(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
-    User(_user): User,
+    User(user): User,
 ) -> AppResponse<Vec<Program>> {
     trace!(?query_params);
 
-    let programs = program_source.retrieve_all(&query_params).await?;
+    let programs = program_source.retrieve_all(&query_params, &user).await?;
 
     Ok(Json(programs))
 }
@@ -31,18 +31,18 @@ pub async fn get_all(
 pub async fn get(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
-    User(_user): User,
+    User(user): User,
 ) -> AppResponse<Program> {
-    let program = program_source.retrieve(&id).await?;
+    let program = program_source.retrieve(&id, &user).await?;
     Ok(Json(program))
 }
 
 pub async fn add(
     State(program_source): State<Arc<dyn ProgramCrud>>,
-    BusinessUser(_user): BusinessUser,
+    BusinessUser(user): BusinessUser,
     ValidatedJson(new_program): ValidatedJson<ProgramContent>,
 ) -> Result<(StatusCode, Json<Program>), AppError> {
-    let program = program_source.create(new_program).await?;
+    let program = program_source.create(new_program, &user).await?;
 
     Ok((StatusCode::CREATED, Json(program)))
 }
@@ -50,10 +50,10 @@ pub async fn add(
 pub async fn edit(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
-    BusinessUser(_user): BusinessUser,
+    BusinessUser(user): BusinessUser,
     ValidatedJson(content): ValidatedJson<ProgramContent>,
 ) -> AppResponse<Program> {
-    let program = program_source.update(&id, content).await?;
+    let program = program_source.update(&id, content, &user).await?;
 
     info!(%program.id, program.program_name=program.content.program_name, "program updated");
 
@@ -63,9 +63,9 @@ pub async fn edit(
 pub async fn delete(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
-    BusinessUser(_user): BusinessUser,
+    BusinessUser(user): BusinessUser,
 ) -> AppResponse<Program> {
-    let program = program_source.delete(&id).await?;
+    let program = program_source.delete(&id, &user).await?;
     info!(%id, "deleted program");
     Ok(Json(program))
 }
@@ -107,6 +107,7 @@ mod test {
     use super::*;
     // for `collect`
     use crate::data_source::DataSource;
+    use crate::jwt::Claims;
     use axum::{
         body::Body,
         http::{self, Request, Response, StatusCode},
@@ -156,7 +157,11 @@ mod test {
         let mut programs = Vec::new();
 
         for program in new_programs {
-            let p = store.programs().create(program.clone()).await.unwrap();
+            let p = store
+                .programs()
+                .create(program.clone(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(p.content, program);
             programs.push(p);
         }

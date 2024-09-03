@@ -2,6 +2,7 @@ use crate::api::report::QueryParams;
 use crate::data_source::postgres::to_json_value;
 use crate::data_source::{Crud, ReportCrud};
 use crate::error::AppError;
+use crate::jwt::Claims;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::report::{ReportContent, ReportId};
@@ -78,8 +79,13 @@ impl Crud for PgReportStorage {
     type NewType = ReportContent;
     type Error = AppError;
     type Filter = QueryParams;
+    type PermissionFilter = Claims;
 
-    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn create(
+        &self,
+        new: Self::NewType,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"
@@ -99,7 +105,11 @@ impl Crud for PgReportStorage {
             .try_into()?)
     }
 
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn retrieve(
+        &self,
+        id: &Self::Id,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"
@@ -112,7 +122,11 @@ impl Crud for PgReportStorage {
         .try_into()?)
     }
 
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+    async fn retrieve_all(
+        &self,
+        filter: &Self::Filter,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Vec<Self::Type>, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"
@@ -135,7 +149,12 @@ impl Crud for PgReportStorage {
         .collect::<Result<_, _>>()?)
     }
 
-    async fn update(&self, id: &Self::Id, new: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn update(
+        &self,
+        id: &Self::Id,
+        new: Self::NewType,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"
@@ -163,7 +182,11 @@ impl Crud for PgReportStorage {
         .try_into()?)
     }
 
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn delete(
+        &self,
+        id: &Self::Id,
+        _user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"

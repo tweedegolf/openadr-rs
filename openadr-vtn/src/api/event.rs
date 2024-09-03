@@ -21,11 +21,11 @@ use crate::jwt::{BusinessUser, User};
 pub async fn get_all(
     State(event_source): State<Arc<dyn EventCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
-    User(_user): User,
+    User(user): User,
 ) -> AppResponse<Vec<Event>> {
     trace!(?query_params);
 
-    let events = event_source.retrieve_all(&query_params).await?;
+    let events = event_source.retrieve_all(&query_params, &user).await?;
 
     Ok(Json(events))
 }
@@ -33,18 +33,18 @@ pub async fn get_all(
 pub async fn get(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
-    User(_user): User,
+    User(user): User,
 ) -> AppResponse<Event> {
-    let event = event_source.retrieve(&id).await?;
+    let event = event_source.retrieve(&id, &user).await?;
     Ok(Json(event))
 }
 
 pub async fn add(
     State(event_source): State<Arc<dyn EventCrud>>,
-    BusinessUser(_user): BusinessUser,
+    BusinessUser(user): BusinessUser,
     ValidatedJson(new_event): ValidatedJson<EventContent>,
 ) -> Result<(StatusCode, Json<Event>), AppError> {
-    let event = event_source.create(new_event).await?;
+    let event = event_source.create(new_event, &user).await?;
 
     info!(%event.id, event_name=?event.content.event_name, "event created");
 
@@ -54,10 +54,10 @@ pub async fn add(
 pub async fn edit(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
-    BusinessUser(_user): BusinessUser,
+    BusinessUser(user): BusinessUser,
     ValidatedJson(content): ValidatedJson<EventContent>,
 ) -> AppResponse<Event> {
-    let event = event_source.update(&id, content).await?;
+    let event = event_source.update(&id, content, &user).await?;
 
     info!(%event.id, event_name=?event.content.event_name, "event updated");
 
@@ -67,9 +67,9 @@ pub async fn edit(
 pub async fn delete(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
-    BusinessUser(_user): BusinessUser,
+    BusinessUser(user): BusinessUser,
 ) -> AppResponse<Event> {
-    let event = event_source.delete(&id).await?;
+    let event = event_source.delete(&id, &user).await?;
     info!(%id, "deleted event");
     Ok(Json(event))
 }
@@ -121,6 +121,7 @@ mod test {
     use openadr_wire::event::Priority;
     use sqlx::PgPool;
     // for `collect`
+    use crate::jwt::Claims;
     use tower::{Service, ServiceExt};
 
     fn default_event_content() -> EventContent {
@@ -155,7 +156,13 @@ mod test {
         let mut events = Vec::new();
 
         for event in new_events {
-            events.push(store.events().create(event.clone()).await.unwrap());
+            events.push(
+                store
+                    .events()
+                    .create(event.clone(), &Claims::any_business_user())
+                    .await
+                    .unwrap(),
+            );
             assert_eq!(events[events.len() - 1].content, event)
         }
 
@@ -279,7 +286,7 @@ mod test {
             .uri("/events")
             .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(dbg!(&content)).unwrap()))
+            .body(Body::from(serde_json::to_vec(&content).unwrap()))
             .unwrap();
 
         let response = ServiceExt::<Request<Body>>::ready(&mut app)
