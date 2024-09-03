@@ -284,7 +284,7 @@ async fn filter_constraint_violation(db: PgPool) {
     let client = common::setup_client(db).await;
 
     let err = client
-        .get_events_request(None, Filter::None, PaginationOptions { skip: 0, limit: 51 })
+        .get_events(None, Filter::None, PaginationOptions { skip: 0, limit: 51 })
         .await
         .unwrap_err();
     let Error::Problem(problem) = err else {
@@ -293,7 +293,7 @@ async fn filter_constraint_violation(db: PgPool) {
     assert_eq!(problem.status, StatusCode::BAD_REQUEST);
 
     let err = client
-        .get_events_request(None, Filter::None, PaginationOptions { skip: 0, limit: 0 })
+        .get_events(None, Filter::None, PaginationOptions { skip: 0, limit: 0 })
         .await
         .unwrap_err();
     let Error::Problem(problem) = err else {

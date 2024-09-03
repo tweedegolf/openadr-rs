@@ -380,26 +380,27 @@ impl Client {
         Ok(ProgramClient::from_program(self.clone(), program))
     }
 
-    /// Get a list of programs from the VTN with the given query parameters
-    pub async fn get_programs_request(
+    /// Lowlevel operation that gets a list of programs from the VTN with the given query parameters
+    pub async fn get_programs(
         &self,
-        target_type: Option<TargetLabel>,
-        targets: &[&str],
+        filter: Filter<'_>,
         pagination: PaginationOptions,
     ) -> Result<Vec<ProgramClient>> {
         // convert query params
-        let target_type_str = target_type.map(|t| t.to_string());
         let skip_str = pagination.skip.to_string();
         let limit_str = pagination.limit.to_string();
 
         // insert into query params
         let mut query = vec![];
-        if let Some(target_type_ref) = &target_type_str {
-            for target in targets {
-                query.push(("targetValues", *target));
+
+        if let Filter::By(ref target_label, target_values) = filter {
+            query.push(("targetType", target_label.as_str()));
+
+            for target_value in target_values {
+                query.push(("targetValues", *target_value));
             }
-            query.push(("targetType", target_type_ref.as_str()));
         }
+
         query.push(("skip", &skip_str));
         query.push(("limit", &limit_str));
 
@@ -409,25 +410,6 @@ impl Client {
             .into_iter()
             .map(|program| ProgramClient::from_program(self.clone(), program))
             .collect())
-    }
-
-    /// Get a single program from the VTN that matches the given target
-    pub async fn get_program(&self, target: Target<'_>) -> Result<ProgramClient> {
-        let pagination = PaginationOptions { skip: 0, limit: 2 };
-
-        let mut programs = self
-            .get_programs_request(
-                Some(target.target_label()),
-                target.target_values(),
-                pagination,
-            )
-            .await?;
-
-        match programs[..] {
-            [] => Err(Error::ObjectNotFound),
-            [_] => Ok(programs.remove(0)),
-            [..] => Err(Error::DuplicateObject),
-        }
     }
 
     /// Get a list of programs from the VTN with the given query parameters
@@ -442,9 +424,8 @@ impl Client {
             };
 
             let received = self
-                .get_programs_request(
-                    Some(target.target_label()),
-                    target.target_values(),
+                .get_programs(
+                    Filter::By(target.target_label(), target.target_values()),
                     pagination,
                 )
                 .await?;
@@ -467,15 +448,15 @@ impl Client {
     pub async fn get_all_programs(&self) -> Result<Vec<ProgramClient>> {
         let page_size = self.client_ref.default_page_size();
         let mut programs = vec![];
-        let mut page = 0;
-        loop {
+
+        for page in 0.. {
             // TODO: this pagination should really depend on that the server indicated there are more results
             let pagination = PaginationOptions {
                 skip: page * page_size,
                 limit: page_size,
             };
 
-            let received = self.get_programs_request(None, &[], pagination).await?;
+            let received = self.get_programs(Filter::None, pagination).await?;
             let received_all = received.len() < page_size;
             for program in received {
                 programs.push(program);
@@ -483,8 +464,6 @@ impl Client {
 
             if received_all {
                 break;
-            } else {
-                page += 1;
             }
         }
 
@@ -493,7 +472,21 @@ impl Client {
 
     /// Get a program by name
     pub async fn get_program_by_name(&self, name: &str) -> Result<ProgramClient> {
-        self.get_program(Target::Program(name)).await
+        let target = Target::Program(name);
+
+        let pagination = PaginationOptions { skip: 0, limit: 2 };
+        let mut programs = self
+            .get_programs(
+                Filter::By(target.target_label(), target.target_values()),
+                pagination,
+            )
+            .await?;
+
+        match programs[..] {
+            [] => Err(crate::Error::ObjectNotFound),
+            [_] => Ok(programs.remove(0)),
+            [..] => Err(crate::Error::DuplicateObject),
+        }
     }
 
     /// Get a program by id
@@ -512,8 +505,8 @@ impl Client {
         Ok(EventClient::from_event(self.client_ref.clone(), event))
     }
 
-    /// Get a list of events from the VTN with the given query parameters
-    pub async fn get_events_request(
+    /// Lowlevel operation that gets a list of events from the VTN with the given query parameters
+    pub async fn get_events(
         &self,
         program_id: Option<&ProgramId>,
         filter: Filter<'_>,
@@ -563,7 +556,7 @@ impl Client {
             };
 
             let received = self
-                .get_events_request(
+                .get_events(
                     program_id,
                     Filter::By(target.target_label(), target.target_values()),
                     pagination,
@@ -596,9 +589,7 @@ impl Client {
                 limit: page_size,
             };
 
-            let received = self
-                .get_events_request(None, Filter::None, pagination)
-                .await?;
+            let received = self.get_events(None, Filter::None, pagination).await?;
             let received_all = received.len() < page_size;
             for event in received {
                 events.push(event);
