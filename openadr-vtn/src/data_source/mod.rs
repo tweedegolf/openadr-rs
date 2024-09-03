@@ -1,5 +1,3 @@
-#[cfg(not(feature = "sqlx"))]
-mod memory;
 #[cfg(feature = "postgres")]
 mod postgres;
 
@@ -12,8 +10,6 @@ use openadr_wire::{
 };
 use std::sync::Arc;
 
-#[cfg(not(feature = "sqlx"))]
-pub use memory::InMemoryStorage;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresStorage;
 

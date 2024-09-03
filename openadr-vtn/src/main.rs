@@ -5,8 +5,6 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
-#[cfg(not(feature = "postgres"))]
-use openadr_vtn::data_source::InMemoryStorage;
 #[cfg(feature = "postgres")]
 use openadr_vtn::data_source::PostgresStorage;
 use openadr_vtn::jwt::JwtManager;
@@ -26,10 +24,13 @@ async fn main() {
     #[cfg(feature = "postgres")]
     let storage = PostgresStorage::from_env().await.unwrap();
 
-    #[cfg(not(feature = "sqlx"))]
-    let storage = InMemoryStorage::default();
-    let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());
+    #[cfg(not(feature = "postgres"))]
+    compile_error!(
+        "No storage backend selected. Please enable the `postgres` feature flag during compilation"
+    );
 
+    // TODO make the JWT secret secure and configurable
+    let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());
     if let Err(e) = axum::serve(listener, state.into_router())
         .with_graceful_shutdown(shutdown_signal())
         .await
