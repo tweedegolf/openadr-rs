@@ -1,113 +1,20 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::{async_trait, Json};
-use chrono::Utc;
+use axum::Json;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use tokio::sync::RwLock;
-use tracing::{info, trace, warn};
-use validator::Validate;
+use tracing::{info, trace};
+use validator::{Validate, ValidationError};
 
 use openadr_wire::program::{ProgramContent, ProgramId};
 use openadr_wire::target::TargetLabel;
 use openadr_wire::Program;
 
-use crate::api::{AppResponse, ValidatedQuery};
-use crate::data_source::{Crud, ProgramCrud};
+use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
+use crate::data_source::ProgramCrud;
 use crate::error::AppError;
 use crate::jwt::{BusinessUser, User};
-
-impl ProgramCrud for RwLock<HashMap<ProgramId, Program>> {}
-
-#[async_trait]
-impl Crud for RwLock<HashMap<ProgramId, Program>> {
-    type Type = Program;
-    type Id = ProgramId;
-    type NewType = ProgramContent;
-    type Error = AppError;
-    type Filter = QueryParams;
-
-    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error> {
-        if let Some(conflict) = self
-            .read()
-            .await
-            .values()
-            .find(|p| p.content.program_name == new.program_name)
-        {
-            warn!(id=%conflict.id, program_name=%new.program_name, "Conflicting program_name");
-            return Err(AppError::Conflict(format!(
-                "Program with id {} has the same name",
-                conflict.id
-            )));
-        }
-
-        let program = Program::new(new);
-        self.write()
-            .await
-            .insert(program.id.clone(), program.clone());
-
-        info!(%program.id,
-            program.program_name=program.content.program_name,
-            "program created"
-        );
-
-        Ok(program)
-    }
-
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        self.read().await.get(id).cloned().ok_or(AppError::NotFound)
-    }
-
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
-        self.read()
-            .await
-            .values()
-            .filter_map(|program| match filter.matches(program) {
-                Ok(true) => Some(Ok(program.clone())),
-                Ok(false) => None,
-                Err(err) => Some(Err(err)),
-            })
-            .skip(filter.skip as usize)
-            .take(filter.limit as usize)
-            .collect::<Result<Vec<_>, AppError>>()
-    }
-
-    async fn update(
-        &self,
-        id: &Self::Id,
-        content: Self::NewType,
-    ) -> Result<Self::Type, Self::Error> {
-        if let Some((_, conflict)) =
-            self.read().await.iter().find(|(inner_id, p)| {
-                id != *inner_id && p.content.program_name == content.program_name
-            })
-        {
-            warn!(updated=%id, conflicting=%conflict.id, program_name=%content.program_name, "Conflicting program_name");
-            return Err(AppError::Conflict(format!(
-                "Program with id {} has the same name",
-                conflict.id
-            )));
-        }
-
-        match self.write().await.get_mut(id) {
-            Some(occupied) => {
-                occupied.content = content;
-                occupied.modification_date_time = Utc::now();
-                Ok(occupied.clone())
-            }
-            None => Err(AppError::NotFound),
-        }
-    }
-
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        match self.write().await.remove(id) {
-            Some(program) => Ok(program),
-            None => Err(AppError::NotFound),
-        }
-    }
-}
 
 pub async fn get_all(
     State(program_source): State<Arc<dyn ProgramCrud>>,
@@ -133,7 +40,7 @@ pub async fn get(
 pub async fn add(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     BusinessUser(_user): BusinessUser,
-    Json(new_program): Json<ProgramContent>,
+    ValidatedJson(new_program): ValidatedJson<ProgramContent>,
 ) -> Result<(StatusCode, Json<Program>), AppError> {
     let program = program_source.create(new_program).await?;
 
@@ -144,7 +51,7 @@ pub async fn edit(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
     BusinessUser(_user): BusinessUser,
-    Json(content): Json<ProgramContent>,
+    ValidatedJson(content): ValidatedJson<ProgramContent>,
 ) -> AppResponse<Program> {
     let program = program_source.update(&id, content).await?;
 
@@ -164,59 +71,52 @@ pub async fn delete(
 }
 
 #[derive(Deserialize, Validate, Debug)]
+#[validate(schema(function = "validate_target_type_value_pair"))]
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
-    target_type: Option<TargetLabel>,
-    target_values: Option<Vec<String>>,
+    pub(crate) target_type: Option<TargetLabel>,
+    pub(crate) target_values: Option<Vec<String>>,
     #[serde(default)]
-    skip: u32,
+    #[validate(range(min = 0))]
+    pub(crate) skip: i64,
     // TODO how to interpret limit = 0 and what is the default?
-    #[validate(range(max = 50))]
+    #[validate(range(min = 1, max = 50))]
     #[serde(default = "get_50")]
-    limit: u32,
+    pub(crate) limit: i64,
 }
 
-fn get_50() -> u32 {
-    50
-}
-
-impl QueryParams {
-    pub fn matches(&self, program: &Program) -> Result<bool, AppError> {
-        if let Some(target_type) = self.target_type.clone() {
-            return match target_type {
-                TargetLabel::ProgramName => Ok(self
-                    .target_values
-                    .clone()
-                    .ok_or(AppError::BadRequest(
-                        "If targetType is specified, targetValues must be specified as well",
-                    ))?
-                    .into_iter()
-                    .any(|name| name == program.content.program_name)),
-                _ => Err(AppError::NotImplemented(
-                    "Program can only be filtered by name",
-                )),
-            };
-        }
-        Ok(true)
+fn validate_target_type_value_pair(query: &QueryParams) -> Result<(), ValidationError> {
+    if query.target_type.is_some() == query.target_values.is_some() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("targetType and targetValues query parameter must either both be set or not set at the same time."))
     }
 }
 
+fn get_50() -> i64 {
+    50
+}
+
 #[cfg(test)]
+#[cfg(feature = "live-db-test")]
 mod test {
-    use crate::{
-        data_source::{AuthInfo, InMemoryStorage},
-        jwt::{AuthRole, JwtManager},
-        state::AppState,
-    };
+    use crate::{data_source::PostgresStorage, jwt::JwtManager, state::AppState};
+
+    use crate::api::test::*;
 
     use super::*;
+    // for `collect`
+    use crate::data_source::DataSource;
     use axum::{
         body::Body,
         http::{self, Request, Response, StatusCode},
         Router,
     };
-    use http_body_util::BodyExt; // for `collect`
-    use tower::{Service, ServiceExt}; // for `call`, `oneshot`, and `ready`
+    use http_body_util::BodyExt;
+    use openadr_wire::Event;
+    use sqlx::PgPool;
+    use tower::{Service, ServiceExt};
+    // for `call`, `oneshot`, and `ready`
 
     fn default_content() -> ProgramContent {
         ProgramContent {
@@ -248,38 +148,29 @@ mod test {
             .unwrap()
     }
 
-    fn state_with_programs(programs: Vec<Program>) -> AppState {
-        let store = InMemoryStorage::default();
+    async fn state_with_programs(
+        new_programs: Vec<ProgramContent>,
+        db: PgPool,
+    ) -> (AppState, Vec<Program>) {
+        let store = PostgresStorage::new(db).unwrap();
+        let mut programs = Vec::new();
 
-        store.auth.try_write().unwrap().push(AuthInfo::bl_admin());
-
-        {
-            let mut writer = store.programs.try_write().unwrap();
-            for program in programs {
-                writer.insert(program.id.clone(), program);
-            }
+        for program in new_programs {
+            let p = store.programs().create(program.clone()).await.unwrap();
+            assert_eq!(p.content, program);
+            programs.push(p);
         }
 
-        AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
+        (
+            AppState::new(store, JwtManager::from_base64_secret("test").unwrap()),
+            programs,
+        )
     }
 
-    fn get_admin_token_from_state(state: &AppState) -> String {
-        state
-            .jwt_manager
-            .create(
-                std::time::Duration::from_secs(3600),
-                "admin".to_string(),
-                vec![AuthRole::AnyBusiness, AuthRole::UserManager],
-            )
-            .unwrap()
-    }
-
-    #[tokio::test]
-    async fn get() {
-        let program = Program::new(default_content());
-        let program_id = program.id.clone();
-
-        let state = state_with_programs(vec![program.clone()]);
+    #[sqlx::test(fixtures("users"))]
+    async fn get(db: PgPool) {
+        let (state, mut programs) = state_with_programs(vec![default_content()], db).await;
+        let program = programs.remove(0);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -287,7 +178,7 @@ mod test {
             .oneshot(
                 Request::builder()
                     .method(http::Method::GET)
-                    .uri(format!("/programs/{program_id}"))
+                    .uri(format!("/programs/{}", program.id))
                     .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
@@ -303,8 +194,8 @@ mod test {
         assert_eq!(program, db_program);
     }
 
-    #[tokio::test]
-    async fn delete() {
+    #[sqlx::test(fixtures("users"))]
+    async fn delete(db: PgPool) {
         let program1 = ProgramContent {
             program_name: "program1".to_string(),
             ..default_content()
@@ -318,14 +209,9 @@ mod test {
             ..default_content()
         };
 
-        let programs = vec![
-            Program::new(program1),
-            Program::new(program2.clone()),
-            Program::new(program3),
-        ];
+        let (state, programs) =
+            state_with_programs(vec![program1, program2.clone(), program3], db).await;
         let program_id = programs[1].id.clone();
-
-        let state = state_with_programs(programs);
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
@@ -358,11 +244,10 @@ mod test {
         assert_eq!(programs.len(), 2);
     }
 
-    #[tokio::test]
-    async fn update() {
-        let program = Program::new(default_content());
-
-        let state = state_with_programs(vec![program.clone()]);
+    #[sqlx::test(fixtures("users"))]
+    async fn update(db: PgPool) {
+        let (state, mut programs) = state_with_programs(vec![default_content()], db).await;
+        let program = programs.remove(0);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -380,40 +265,45 @@ mod test {
         assert!(program.modification_date_time < db_program.modification_date_time);
     }
 
-    #[tokio::test]
-    async fn update_same_name() {
-        let program = Program::new(default_content());
+    #[sqlx::test(fixtures("users"))]
+    async fn update_same_name(db: PgPool) {
+        let program1 = ProgramContent {
+            program_name: "program1".to_string(),
+            ..default_content()
+        };
+        let program2 = ProgramContent {
+            program_name: "program2".to_string(),
+            ..default_content()
+        };
 
-        let state = state_with_programs(vec![program.clone()]);
+        let (state, mut programs) = state_with_programs(vec![program1, program2], db).await;
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
-        // different id, same (default) name
-        let program = Program::new(default_content());
+        let mut updated = programs.remove(0);
+        updated.content.program_name = "program2".to_string();
 
+        // different id, same name
         let response = app
-            .oneshot(program_request(http::Method::PUT, program.clone(), &token))
+            .oneshot(program_request(http::Method::PUT, updated, &token))
             .await
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::CONFLICT);
     }
 
-    #[tokio::test]
-    async fn create_same_name() {
-        let state = state_with_programs(vec![]);
+    #[sqlx::test(fixtures("users"))]
+    async fn create_same_name(db: PgPool) {
+        let (state, _) = state_with_programs(vec![], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
-
-        let program = Program::new(default_content());
-        let content = program.content;
 
         let request = Request::builder()
             .method(http::Method::POST)
             .uri("/programs")
             .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .body(Body::from(serde_json::to_vec(&default_content()).unwrap()))
             .unwrap();
 
         let response = ServiceExt::<Request<Body>>::ready(&mut app)
@@ -429,7 +319,7 @@ mod test {
             .uri("/programs")
             .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .body(Body::from(serde_json::to_vec(&default_content()).unwrap()))
             .unwrap();
 
         let response = app.oneshot(request).await.unwrap();
@@ -457,8 +347,8 @@ mod test {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn retrieve_all_with_filter() {
+    #[sqlx::test(fixtures("users"))]
+    async fn retrieve_all_with_filter(db: PgPool) {
         let program1 = ProgramContent {
             program_name: "program1".to_string(),
             ..default_content()
@@ -472,13 +362,7 @@ mod test {
             ..default_content()
         };
 
-        let programs = vec![
-            Program::new(program1),
-            Program::new(program2),
-            Program::new(program3),
-        ];
-
-        let state = state_with_programs(programs);
+        let (state, _) = state_with_programs(vec![program1, program2, program3], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
@@ -498,6 +382,12 @@ mod test {
         let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 2);
 
+        let response = retrieve_all_with_filter_help(&mut app, "skip=-1", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = retrieve_all_with_filter_help(&mut app, "skip=0", &token).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
         // limit
         let response = retrieve_all_with_filter_help(&mut app, "limit=2", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
@@ -506,9 +396,40 @@ mod test {
         let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 2);
 
+        let response = retrieve_all_with_filter_help(&mut app, "limit=-1", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = retrieve_all_with_filter_help(&mut app, "limit=0", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
         // program name
         let response = retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE", &token).await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Do return BAD_REQUEST on empty targetValue"
+        );
+
+        let response =
+            retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE&targetValues", &token)
+                .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Do return BAD_REQUEST on empty targetValue"
+        );
+
+        let response = retrieve_all_with_filter_help(
+            &mut app,
+            "targetType=NONSENSE&targetValues=test",
+            &token,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 0);
 
         let response = retrieve_all_with_filter_help(
             &mut app,

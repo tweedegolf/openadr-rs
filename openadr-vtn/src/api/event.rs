@@ -1,14 +1,11 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::{async_trait, Json};
-use chrono::Utc;
+use axum::Json;
 use serde::Deserialize;
-use tokio::sync::RwLock;
 use tracing::{info, trace};
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 use openadr_wire::event::EventContent;
 use openadr_wire::event::EventId;
@@ -16,71 +13,10 @@ use openadr_wire::program::ProgramId;
 use openadr_wire::target::TargetLabel;
 use openadr_wire::Event;
 
-use crate::api::{AppResponse, ValidatedQuery};
-use crate::data_source::{Crud, EventCrud};
+use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
+use crate::data_source::EventCrud;
 use crate::error::AppError;
-use crate::error::AppError::NotImplemented;
 use crate::jwt::{BusinessUser, User};
-
-impl EventCrud for RwLock<HashMap<EventId, Event>> {}
-
-#[async_trait]
-impl Crud for RwLock<HashMap<EventId, Event>> {
-    type Type = Event;
-    type Id = EventId;
-    type NewType = EventContent;
-    type Error = AppError;
-    type Filter = QueryParams;
-
-    async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
-        let event = Event::new(content);
-        self.write().await.insert(event.id.clone(), event.clone());
-        Ok(event)
-    }
-
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        self.read().await.get(id).cloned().ok_or(AppError::NotFound)
-    }
-
-    async fn retrieve_all(
-        &self,
-        query_params: &Self::Filter,
-    ) -> Result<Vec<Self::Type>, Self::Error> {
-        self.read()
-            .await
-            .values()
-            .filter_map(|event| match query_params.matches(event) {
-                Ok(true) => Some(Ok(event.clone())),
-                Ok(false) => None,
-                Err(err) => Some(Err(err)),
-            })
-            .skip(query_params.skip as usize)
-            .take(query_params.limit as usize)
-            .collect::<Result<Vec<_>, AppError>>()
-    }
-
-    async fn update(
-        &self,
-        id: &Self::Id,
-        content: Self::NewType,
-    ) -> Result<Self::Type, Self::Error> {
-        match self.write().await.get_mut(id) {
-            Some(occupied) => {
-                occupied.content = content;
-                occupied.modification_date_time = Utc::now();
-                Ok(occupied.clone())
-            }
-            None => Err(AppError::NotFound),
-        }
-    }
-
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
-        match self.write().await.remove(id) {
-            Some(event) => Ok(event),
-            None => Err(AppError::NotFound),
-        }
-    }
-}
 
 pub async fn get_all(
     State(event_source): State<Arc<dyn EventCrud>>,
@@ -106,7 +42,7 @@ pub async fn get(
 pub async fn add(
     State(event_source): State<Arc<dyn EventCrud>>,
     BusinessUser(_user): BusinessUser,
-    Json(new_event): Json<EventContent>,
+    ValidatedJson(new_event): ValidatedJson<EventContent>,
 ) -> Result<(StatusCode, Json<Event>), AppError> {
     let event = event_source.create(new_event).await?;
 
@@ -119,7 +55,7 @@ pub async fn edit(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
     BusinessUser(_user): BusinessUser,
-    Json(content): Json<EventContent>,
+    ValidatedJson(content): ValidatedJson<EventContent>,
 ) -> AppResponse<Event> {
     let event = event_source.update(&id, content).await?;
 
@@ -139,77 +75,58 @@ pub async fn delete(
 }
 
 #[derive(Deserialize, Validate, Debug)]
+#[validate(schema(function = "validate_target_type_value_pair"))]
 #[serde(rename_all = "camelCase")]
 pub struct QueryParams {
     #[serde(rename = "programID")]
-    program_id: Option<ProgramId>,
-    target_type: Option<TargetLabel>,
-    target_values: Option<Vec<String>>,
+    pub(crate) program_id: Option<ProgramId>,
+    pub(crate) target_type: Option<TargetLabel>,
+    pub(crate) target_values: Option<Vec<String>>,
     #[serde(default)]
-    skip: u32,
+    #[validate(range(min = 0))]
+    pub(crate) skip: i64,
     // TODO how to interpret limit = 0 and what is the default?
-    #[validate(range(max = 50))]
+    #[validate(range(min = 1, max = 50))]
     #[serde(default = "get_50")]
-    limit: u32,
+    pub(crate) limit: i64,
 }
 
-fn get_50() -> u32 {
-    50
-}
-
-impl QueryParams {
-    pub fn matches(&self, event: &Event) -> Result<bool, AppError> {
-        if let Some(program_id) = &self.program_id {
-            if &event.content.program_id != program_id {
-                return Ok(false);
-            }
-        }
-
-        if let Some(target_type) = self.target_type.as_ref() {
-            match target_type {
-                TargetLabel::EventName => {
-                    let Some(ref event_name) = event.content.event_name else {
-                        return Ok(false);
-                    };
-
-                    let Some(target_values) = &self.target_values else {
-                        return Err(AppError::BadRequest(
-                            "If targetType is specified, targetValues must be specified as well",
-                        ));
-                    };
-
-                    Ok(target_values.iter().any(|name| name == event_name))
-                }
-                _ => Err(NotImplemented("only filtering by event name is supported")),
-            }
-        } else {
-            Ok(true)
-        }
+fn validate_target_type_value_pair(query: &QueryParams) -> Result<(), ValidationError> {
+    if query.target_type.is_some() == query.target_values.is_some() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("targetType and targetValues query parameter must either both be set or not set at the same time."))
     }
 }
 
+fn get_50() -> i64 {
+    50
+}
+
 #[cfg(test)]
+#[cfg(feature = "live-db-test")]
 mod test {
-    use crate::{
-        data_source::{AuthInfo, InMemoryStorage},
-        jwt::{AuthRole, JwtManager},
-        state::AppState,
-    };
+    use crate::{data_source::PostgresStorage, jwt::JwtManager, state::AppState};
 
     use super::*;
+    use crate::api::test::*;
+    // for `call`, `oneshot`, and `ready`
+    use crate::data_source::DataSource;
     use axum::{
         body::Body,
         http::{self, Request, Response, StatusCode},
         Router,
     };
     use http_body_util::BodyExt;
-    use openadr_wire::event::Priority; // for `collect`
-    use tower::{Service, ServiceExt}; // for `call`, `oneshot`, and `ready`
+    use openadr_wire::event::Priority;
+    use sqlx::PgPool;
+    // for `collect`
+    use tower::{Service, ServiceExt};
 
-    fn default_content() -> EventContent {
+    fn default_event_content() -> EventContent {
         EventContent {
             object_type: None,
-            program_id: ProgramId::new("program_id").unwrap(),
+            program_id: ProgramId::new("program-1").unwrap(),
             event_name: Some("event_name".to_string()),
             priority: Priority::MAX,
             report_descriptors: None,
@@ -230,38 +147,28 @@ mod test {
             .unwrap()
     }
 
-    fn state_with_events(events: Vec<Event>) -> AppState {
-        let store = InMemoryStorage::default();
+    async fn state_with_events(
+        new_events: Vec<EventContent>,
+        db: PgPool,
+    ) -> (AppState, Vec<Event>) {
+        let store = PostgresStorage::new(db).unwrap();
+        let mut events = Vec::new();
 
-        store.auth.try_write().unwrap().push(AuthInfo::bl_admin());
-
-        {
-            let mut writer = store.events.try_write().unwrap();
-            for event in events {
-                writer.insert(event.id.clone(), event);
-            }
+        for event in new_events {
+            events.push(store.events().create(event.clone()).await.unwrap());
+            assert_eq!(events[events.len() - 1].content, event)
         }
 
-        AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
+        (
+            AppState::new(store, JwtManager::from_base64_secret("test").unwrap()),
+            events,
+        )
     }
 
-    fn get_admin_token_from_state(state: &AppState) -> String {
-        state
-            .jwt_manager
-            .create(
-                std::time::Duration::from_secs(3600),
-                "admin".to_string(),
-                vec![AuthRole::AnyBusiness, AuthRole::UserManager],
-            )
-            .unwrap()
-    }
-
-    #[tokio::test]
-    async fn get() {
-        let event = Event::new(default_content());
-        let event_id = event.id.clone();
-
-        let state = state_with_events(vec![event.clone()]);
+    #[sqlx::test(fixtures("programs"))]
+    async fn get(db: PgPool) {
+        let (state, mut events) = state_with_events(vec![default_event_content()], db).await;
+        let event = events.remove(0);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -269,7 +176,7 @@ mod test {
             .oneshot(
                 Request::builder()
                     .method(http::Method::GET)
-                    .uri(format!("/events/{event_id}"))
+                    .uri(format!("/events/{}", event.id))
                     .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                     .body(Body::empty())
                     .unwrap(),
@@ -285,34 +192,29 @@ mod test {
         assert_eq!(event, db_event);
     }
 
-    #[tokio::test]
-    async fn delete() {
+    #[sqlx::test(fixtures("programs"))]
+    async fn delete(db: PgPool) {
         let event1 = EventContent {
-            program_id: ProgramId::new("program1").unwrap(),
+            program_id: ProgramId::new("program-1").unwrap(),
             event_name: Some("event1".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
         let event2 = EventContent {
-            program_id: ProgramId::new("program2").unwrap(),
+            program_id: ProgramId::new("program-2").unwrap(),
             event_name: Some("event2".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
         let event3 = EventContent {
-            program_id: ProgramId::new("program3").unwrap(),
+            program_id: ProgramId::new("program-2").unwrap(),
             event_name: Some("event3".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
 
-        let events = vec![
-            Event::new(event1),
-            Event::new(event2.clone()),
-            Event::new(event3),
-        ];
-        let event_id = events[1].id.clone();
-
-        let state = state_with_events(events);
+        let (state, events) = state_with_events(vec![event1, event2.clone(), event3], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
+
+        let event_id = events[1].id.clone();
 
         let request = Request::builder()
             .method(http::Method::DELETE)
@@ -343,11 +245,10 @@ mod test {
         assert_eq!(programs.len(), 2);
     }
 
-    #[tokio::test]
-    async fn update() {
-        let event = Event::new(default_content());
-
-        let state = state_with_events(vec![event.clone()]);
+    #[sqlx::test(fixtures("programs"))]
+    async fn update(db: PgPool) {
+        let (state, mut events) = state_with_events(vec![default_event_content()], db).await;
+        let event = events.remove(0);
         let token = get_admin_token_from_state(&state);
         let app = state.into_router();
 
@@ -365,21 +266,20 @@ mod test {
         assert!(event.modification_date_time < db_program.modification_date_time);
     }
 
-    #[tokio::test]
-    async fn create_same_name() {
-        let state = state_with_events(vec![]);
+    #[sqlx::test(fixtures("programs"))]
+    async fn create_same_name(db: PgPool) {
+        let (state, _) = state_with_events(vec![], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
-        let event = Event::new(default_content());
-        let content = event.content;
+        let content = default_event_content();
 
         let request = Request::builder()
             .method(http::Method::POST)
             .uri("/events")
             .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .body(Body::from(serde_json::to_vec(dbg!(&content)).unwrap()))
             .unwrap();
 
         let response = ServiceExt::<Request<Body>>::ready(&mut app)
@@ -424,27 +324,25 @@ mod test {
             .unwrap()
     }
 
-    #[tokio::test]
-    async fn retrieve_all_with_filter() {
+    #[sqlx::test(fixtures("programs"))]
+    async fn retrieve_all_with_filter(db: PgPool) {
         let event1 = EventContent {
-            program_id: ProgramId::new("program1").unwrap(),
+            program_id: ProgramId::new("program-1").unwrap(),
             event_name: Some("event1".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
         let event2 = EventContent {
-            program_id: ProgramId::new("program2").unwrap(),
+            program_id: ProgramId::new("program-2").unwrap(),
             event_name: Some("event2".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
         let event3 = EventContent {
-            program_id: ProgramId::new("program3").unwrap(),
+            program_id: ProgramId::new("program-2").unwrap(),
             event_name: Some("event3".to_string()),
-            ..default_content()
+            ..default_event_content()
         };
 
-        let events = vec![Event::new(event1), Event::new(event2), Event::new(event3)];
-
-        let state = state_with_events(events);
+        let (state, _) = state_with_events(vec![event1, event2, event3], db).await;
         let token = get_admin_token_from_state(&state);
         let mut app = state.into_router();
 
@@ -464,6 +362,12 @@ mod test {
         let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 2);
 
+        let response = retrieve_all_with_filter_help(&mut app, "skip=-1", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = retrieve_all_with_filter_help(&mut app, "skip=0", &token).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
         // limit
         let response = retrieve_all_with_filter_help(&mut app, "limit=2", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
@@ -472,19 +376,66 @@ mod test {
         let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 2);
 
+        let response = retrieve_all_with_filter_help(&mut app, "limit=-1", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = retrieve_all_with_filter_help(&mut app, "limit=0", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
         // program name
         let response = retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE", &token).await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Do return BAD_REQUEST on empty targetValue"
+        );
+
+        let response =
+            retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE&targetValues", &token)
+                .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Do return BAD_REQUEST on empty targetValue"
+        );
 
         let response = retrieve_all_with_filter_help(
             &mut app,
-            "targetType=PROGRAM_NAME&targetValues=program1&targetValues=program2",
+            "targetType=NONSENSE&targetValues=test",
             &token,
         )
         .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(response.status(), StatusCode::OK);
 
-        let response = retrieve_all_with_filter_help(&mut app, "programID=program1", &token).await;
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 0);
+
+        let response = retrieve_all_with_filter_help(
+            &mut app,
+            "targetType=PROGRAM_NAME&targetValues=program-1&targetValues=program-2",
+            &token,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 3);
+
+        let response = retrieve_all_with_filter_help(
+            &mut app,
+            "targetType=PROGRAM_NAME&targetValues=program-1",
+            &token,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 1);
+
+        let response = retrieve_all_with_filter_help(&mut app, "programID=program-1", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = response.into_body().collect().await.unwrap().to_bytes();

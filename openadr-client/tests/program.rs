@@ -1,7 +1,7 @@
 use axum::http::StatusCode;
-
 use openadr_client::{Error, Filter, PaginationOptions};
 use openadr_wire::{program::ProgramContent, target::TargetLabel};
+use sqlx::PgPool;
 
 mod common;
 
@@ -25,17 +25,17 @@ fn default_content() -> ProgramContent {
     }
 }
 
-#[tokio::test]
-async fn get() {
-    let client = common::setup_client();
+#[sqlx::test(fixtures("users"))]
+async fn get(db: PgPool) {
+    let client = common::setup_client(db).await;
     let program_client = client.create_program(default_content()).await.unwrap();
 
     assert_eq!(program_client.content(), &default_content());
 }
 
-#[tokio::test]
-async fn delete() {
-    let client = common::setup_client();
+#[sqlx::test(fixtures("users"))]
+async fn delete(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -64,9 +64,9 @@ async fn delete() {
     assert_eq!(programs.len(), 2);
 }
 
-#[tokio::test]
-async fn update() {
-    let client = common::setup_client();
+#[sqlx::test(fixtures("users"))]
+async fn update(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -89,9 +89,9 @@ async fn update() {
     assert!(program.modification_date_time() > creation_date_time);
 }
 
-#[tokio::test]
-async fn update_same_name() {
-    let client = common::setup_client();
+#[sqlx::test(fixtures("users"))]
+async fn update_same_name(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -120,12 +120,12 @@ async fn update_same_name() {
     };
 
     assert_eq!(problem.status, StatusCode::CONFLICT);
-    assert!(program2.modification_date_time() == creation_date_time);
+    assert_eq!(program2.modification_date_time(), creation_date_time);
 }
 
-#[tokio::test]
-async fn create_same_name() {
-    let client = common::setup_client();
+#[sqlx::test(fixtures("users"))]
+async fn create_same_name(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -140,9 +140,9 @@ async fn create_same_name() {
     assert_eq!(problem.status, StatusCode::CONFLICT);
 }
 
-#[tokio::test]
-async fn retrieve_all_with_filter() {
-    let client = common::setup_client();
+#[sqlx::test(fixtures("users"))]
+async fn retrieve_all_with_filter(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = ProgramContent {
         program_name: "program1".to_string(),
@@ -192,7 +192,36 @@ async fn retrieve_all_with_filter() {
     let Error::Problem(problem) = err else {
         unreachable!()
     };
-    assert_eq!(problem.status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(
+        problem.status,
+        StatusCode::BAD_REQUEST,
+        "Do return BAD_REQUEST on empty targetValue"
+    );
+
+    let err = client
+        .get_programs(
+            Filter::By(TargetLabel::Private("NONSENSE".to_string()), &[""]),
+            PaginationOptions { skip: 0, limit: 2 },
+        )
+        .await
+        .unwrap_err();
+    let Error::Problem(problem) = err else {
+        unreachable!()
+    };
+    assert_eq!(
+        problem.status,
+        StatusCode::BAD_REQUEST,
+        "Do return BAD_REQUEST on empty targetValue"
+    );
+
+    let programs = client
+        .get_programs(
+            Filter::By(TargetLabel::Private("NONSENSE".to_string()), &["test"]),
+            PaginationOptions { skip: 0, limit: 50 },
+        )
+        .await
+        .unwrap();
+    assert_eq!(programs.len(), 0);
 
     let programs = client
         .get_programs(

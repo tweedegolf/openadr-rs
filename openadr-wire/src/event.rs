@@ -1,21 +1,21 @@
 //! Types used for the `event/` endpoint
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
-use std::fmt::{Display, Formatter};
-use uuid::Uuid;
-
 use crate::interval::IntervalPeriod;
 use crate::program::ProgramId;
 use crate::report::ReportDescriptor;
 use crate::target::TargetMap;
 use crate::values_map::Value;
-use crate::{Identifier, Unit};
+use crate::{Identifier, IdentifierError, Unit};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
+use validator::Validate;
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
     /// URL safe VTN assigned object ID.
@@ -27,11 +27,12 @@ pub struct Event {
     #[serde(with = "crate::serde_rfc3339")]
     pub modification_date_time: DateTime<Utc>,
     #[serde(flatten)]
+    #[validate(nested)]
     pub content: EventContent,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct EventContent {
     /// Used as discriminator, e.g. notification.object
@@ -114,17 +115,6 @@ impl EventContent {
     }
 }
 
-impl Event {
-    pub fn new(content: EventContent) -> Self {
-        Self {
-            id: EventId(format!("event-{}", Uuid::new_v4()).parse().unwrap()),
-            created_date_time: Utc::now(),
-            modification_date_time: Utc::now(),
-            content,
-        }
-    }
-}
-
 /// URL safe VTN assigned object ID
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
 pub struct EventId(pub(crate) Identifier);
@@ -138,6 +128,14 @@ impl Display for EventId {
 impl EventId {
     pub fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+}
+
+impl FromStr for EventId {
+    type Err = IdentifierError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.parse()?))
     }
 }
 
@@ -190,11 +188,23 @@ impl Ord for Priority {
     }
 }
 
+impl From<Option<i64>> for Priority {
+    fn from(value: Option<i64>) -> Self {
+        Self(value.and_then(|i| i.unsigned_abs().try_into().ok()))
+    }
+}
+
+impl From<Priority> for Option<i64> {
+    fn from(value: Priority) -> Self {
+        value.0.map(|u| u.into())
+    }
+}
+
 /// Contextual information used to interpret event valuesMap values. E.g. a PRICE payload simply
 /// contains a price value, an associated descriptor provides necessary context such as units and
 /// currency.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
@@ -224,8 +234,8 @@ pub enum Currency {
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EventInterval {
     /// A client generated number assigned an interval object. Not a sequence number.
@@ -299,9 +309,8 @@ pub enum EventType {
     #[serde(rename = "CTA2045_SET_OVERRIDE_STATUS")]
     CTA2045SetOverrideStatus,
     #[serde(untagged)]
-    Private(
-        #[serde(deserialize_with = "crate::string_within_range_inclusive::<1, 128, _>")] String,
-    ),
+    #[serde(deserialize_with = "crate::string_within_range_inclusive::<1, 128, _>")]
+    Private(String),
 }
 
 #[cfg(test)]

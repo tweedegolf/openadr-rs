@@ -1,7 +1,7 @@
 [package]
 name = "openadr-vtn"
 description = "openadr VTN server"
-readme = "README.md"
+readme = "../README.md"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,5 +37,12 @@ http-body-util.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 
+sqlx = {workspace = true, optional = true}
+dotenvy = {workspace = true, optional = true}
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[features]
+live-db-test = ["postgres"]
+postgres = ["sqlx/postgres", "dep:dotenvy"]

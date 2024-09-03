@@ -1,0 +1,125 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE program\n            SET modification_date_time = now(),\n                program_name = $2,\n                program_long_name = $3,\n                retailer_name = $4,\n                retailer_long_name = $5,\n                program_type = $6,\n                country = $7,\n                principal_subdivision = $8,\n                interval_period = $9,\n                program_descriptions = $10,\n                binding_events = $11,\n                local_price = $12,\n                payload_descriptors = $13,\n                targets = $14\n            WHERE id = $1\n            RETURNING *\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_date_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "modification_date_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "program_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "program_long_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "retailer_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "retailer_long_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "program_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "country",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "principal_subdivision",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "interval_period",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 11,
+        "name": "program_descriptions",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "binding_events",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "local_price",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 14,
+        "name": "payload_descriptors",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 15,
+        "name": "targets",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Jsonb",
+        "Bool",
+        "Bool",
+        "Jsonb",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "46b10ab9db5bbb54e55872b2a04b03ebad35f12327f3950984e1154b31b11514"
+}

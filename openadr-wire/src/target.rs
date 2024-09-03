@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct TargetMap(Vec<TargetEntry>);
+pub struct TargetMap(pub Vec<TargetEntry>);
 
 // TODO: Handle strong typing of values
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TargetEntry {
     #[serde(rename = "type")]
-    label: TargetLabel,
-    values: [String; 1],
+    pub label: TargetLabel,
+    pub values: [String; 1],
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]

@@ -29,7 +29,7 @@ struct InternalInterval {
 #[allow(unused)]
 #[derive(Clone, Default, Debug)]
 pub struct Timeline {
-    data: rangemap::RangeMap<chrono::DateTime<chrono::Utc>, InternalInterval>,
+    data: rangemap::RangeMap<DateTime<Utc>, InternalInterval>,
 }
 
 impl Timeline {
@@ -202,13 +202,13 @@ mod test {
         range: Range<u32>,
         value: i64,
         priority: Priority,
-    ) -> (Range<DateTime<Utc>>, super::InternalInterval) {
+    ) -> (Range<DateTime<Utc>>, InternalInterval) {
         let start = DateTime::UNIX_EPOCH + Duration::hours(range.start.into());
         let end = DateTime::UNIX_EPOCH + Duration::hours(range.end.into());
 
         (
             start..end,
-            super::InternalInterval {
+            InternalInterval {
                 id,
                 randomize_start: None,
                 value_map: vec![EventValuesMap {

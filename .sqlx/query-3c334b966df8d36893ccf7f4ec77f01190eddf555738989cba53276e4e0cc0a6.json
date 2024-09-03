@@ -1,0 +1,89 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT e.*\n            FROM event e\n              JOIN program p on p.id = e.program_id\n            WHERE ($1::text IS NULL OR program_id like $1)\n              AND ($2::text[] IS NULL OR TRUE) -- TODO filter for ven_names\n              AND ($3::text[] IS NULL OR event_name = ANY($3))\n              AND ($4::text[] IS NULL OR p.program_name = ANY($4))\n              AND ($5::text IS NULL OR jsonb_path_query_array(e.targets, '$[*].type') ? $5)\n              AND ($6::text[] IS NULL OR jsonb_path_query_array(e.targets, '$[*].values[*]') ?| ($6))\n            OFFSET $7 LIMIT $8\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_date_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "modification_date_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "program_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "event_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "priority",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "report_descriptors",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 7,
+        "name": "payload_descriptors",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 8,
+        "name": "interval_period",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 9,
+        "name": "intervals",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 10,
+        "name": "targets",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Text",
+        "TextArray",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "3c334b966df8d36893ccf7f4ec77f01190eddf555738989cba53276e4e0cc0a6"
+}

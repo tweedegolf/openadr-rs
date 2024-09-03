@@ -5,7 +5,10 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
-use openadr_vtn::data_source::{AuthInfo, InMemoryStorage};
+#[cfg(not(feature = "postgres"))]
+use openadr_vtn::data_source::InMemoryStorage;
+#[cfg(feature = "postgres")]
+use openadr_vtn::data_source::PostgresStorage;
 use openadr_vtn::jwt::JwtManager;
 use openadr_vtn::state::AppState;
 
@@ -20,8 +23,11 @@ async fn main() {
     let listener = TcpListener::bind(addr).await.unwrap();
     info!("listening on http://{}", listener.local_addr().unwrap());
 
+    #[cfg(feature = "postgres")]
+    let storage = PostgresStorage::from_env().await.unwrap();
+
+    #[cfg(not(feature = "sqlx"))]
     let storage = InMemoryStorage::default();
-    storage.auth.write().await.push(AuthInfo::bl_admin());
     let state = AppState::new(storage, JwtManager::from_base64_secret("test").unwrap());
 
     if let Err(e) = axum::serve(listener, state.into_router())

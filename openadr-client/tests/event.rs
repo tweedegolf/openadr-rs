@@ -1,11 +1,11 @@
 use axum::http::StatusCode;
-
 use openadr_client::{Error, Filter, PaginationOptions};
 use openadr_wire::{
     event::{EventContent, Priority},
     program::{ProgramContent, ProgramId},
     target::TargetLabel,
 };
+use sqlx::PgPool;
 
 mod common;
 
@@ -23,18 +23,18 @@ fn default_content(program_id: &ProgramId) -> EventContent {
     }
 }
 
-#[tokio::test]
-async fn get() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test(fixtures("users"))]
+async fn get(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
     let event_content = default_content(client.id());
     let event_client = client.create_event(event_content.clone()).await.unwrap();
 
     assert_eq!(event_client.content(), &event_content);
 }
 
-#[tokio::test]
-async fn delete() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test(fixtures("users"))]
+async fn delete(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
         event_name: Some("event1".to_string()),
@@ -67,9 +67,9 @@ async fn delete() {
     assert_eq!(events.len(), 2);
 }
 
-#[tokio::test]
-async fn update() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test(fixtures("users"))]
+async fn update(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
         event_name: Some("event1".to_string()),
@@ -92,9 +92,9 @@ async fn update() {
     assert!(event.modification_date_time() > creation_date_time);
 }
 
-#[tokio::test]
-async fn update_same_name() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test(fixtures("users"))]
+async fn update_same_name(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
         event_name: Some("event1".to_string()),
@@ -123,9 +123,9 @@ async fn update_same_name() {
     assert!(event2.modification_date_time() > creation_date_time);
 }
 
-#[tokio::test]
-async fn create_same_name() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test(fixtures("users"))]
+async fn create_same_name(db: PgPool) {
+    let client = common::setup_program_client("program", db).await;
 
     let event1 = EventContent {
         event_name: Some("event1".to_string()),
@@ -137,23 +137,22 @@ async fn create_same_name() {
     let _ = client.create_event(event1).await.unwrap();
 }
 
-#[tokio::test]
-#[ignore]
-async fn retrieve_all_with_filter() {
-    let client = common::setup_program_client("program").await;
+#[sqlx::test(fixtures("users"))]
+async fn retrieve_all_with_filter(db: PgPool) {
+    let client = common::setup_program_client("program1", db).await;
 
     let event1 = EventContent {
-        program_id: ProgramId::new("program1").unwrap(),
+        program_id: client.id().clone(),
         event_name: Some("event1".to_string()),
         ..default_content(client.id())
     };
     let event2 = EventContent {
-        program_id: ProgramId::new("program2").unwrap(),
+        program_id: client.id().clone(),
         event_name: Some("event2".to_string()),
         ..default_content(client.id())
     };
     let event3 = EventContent {
-        program_id: ProgramId::new("program3").unwrap(),
+        program_id: client.id().clone(),
         event_name: Some("event3".to_string()),
         ..default_content(client.id())
     };
@@ -183,6 +182,31 @@ async fn retrieve_all_with_filter() {
     assert_eq!(events.len(), 2);
 
     // event name
+    let events = client
+        .get_events_request(
+            Filter::By(TargetLabel::Private("NONSENSE".to_string()), &["test"]),
+            PaginationOptions { skip: 0, limit: 2 },
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 0);
+
+    let err = client
+        .get_events_request(
+            Filter::By(TargetLabel::Private("NONSENSE".to_string()), &[""]),
+            PaginationOptions { skip: 0, limit: 2 },
+        )
+        .await
+        .unwrap_err();
+    let Error::Problem(problem) = err else {
+        unreachable!()
+    };
+    assert_eq!(
+        problem.status,
+        StatusCode::BAD_REQUEST,
+        "Do return BAD_REQUEST on empty targetValue"
+    );
+
     let err = client
         .get_events_request(
             Filter::By(TargetLabel::Private("NONSENSE".to_string()), &[]),
@@ -193,7 +217,11 @@ async fn retrieve_all_with_filter() {
     let Error::Problem(problem) = err else {
         unreachable!()
     };
-    assert_eq!(problem.status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(
+        problem.status,
+        StatusCode::BAD_REQUEST,
+        "Do return BAD_REQUEST on empty targetValue"
+    );
 
     let events = client
         .get_events_request(
@@ -202,12 +230,21 @@ async fn retrieve_all_with_filter() {
         )
         .await
         .unwrap();
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
+
+    let events = client
+        .get_events_request(
+            Filter::By(TargetLabel::ProgramName, &["program2"]),
+            PaginationOptions { skip: 0, limit: 50 },
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 0);
 }
 
-#[tokio::test]
-async fn get_program_events() {
-    let client = common::setup_client();
+#[sqlx::test(fixtures("users"))]
+async fn get_program_events(db: PgPool) {
+    let client = common::setup_client(db).await;
 
     let program1 = client
         .create_program(ProgramContent::new("program1"))
@@ -240,4 +277,27 @@ async fn get_program_events() {
 
     assert_eq!(events1[0].content(), &event1);
     assert_eq!(events2[0].content(), &event2);
+}
+
+#[sqlx::test(fixtures("users"))]
+async fn filter_constraint_violation(db: PgPool) {
+    let client = common::setup_client(db).await;
+
+    let err = client
+        .get_events(None, Filter::None, PaginationOptions { skip: 0, limit: 51 })
+        .await
+        .unwrap_err();
+    let Error::Problem(problem) = err else {
+        unreachable!()
+    };
+    assert_eq!(problem.status, StatusCode::BAD_REQUEST);
+
+    let err = client
+        .get_events(None, Filter::None, PaginationOptions { skip: 0, limit: 0 })
+        .await
+        .unwrap_err();
+    let Error::Problem(problem) = err else {
+        unreachable!()
+    };
+    assert_eq!(problem.status, StatusCode::BAD_REQUEST);
 }

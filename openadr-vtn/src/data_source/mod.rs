@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+#[cfg(not(feature = "sqlx"))]
+mod memory;
+#[cfg(feature = "postgres")]
+mod postgres;
 
 use axum::async_trait;
 use openadr_wire::{
@@ -7,8 +10,12 @@ use openadr_wire::{
     report::{ReportContent, ReportId},
     Event, Program, Report,
 };
-use thiserror::Error;
-use tokio::sync::RwLock;
+use std::sync::Arc;
+
+#[cfg(not(feature = "sqlx"))]
+pub use memory::InMemoryStorage;
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresStorage;
 
 use crate::{error::AppError, jwt::AuthRole};
 
@@ -58,12 +65,6 @@ pub trait EventCrud:
 {
 }
 
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("{0}")]
-    Json(#[from] serde_json::Error),
-}
-
 #[async_trait]
 pub trait AuthSource: Send + Sync + 'static {
     async fn get_user(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo>;
@@ -81,51 +82,4 @@ pub struct AuthInfo {
     pub client_id: String,
     pub client_secret: String,
     pub roles: Vec<AuthRole>,
-}
-
-impl AuthInfo {
-    pub fn bl_admin() -> Self {
-        Self {
-            client_id: "admin".to_string(),
-            client_secret: "admin".to_string(),
-            roles: vec![AuthRole::AnyBusiness, AuthRole::UserManager],
-        }
-    }
-}
-
-#[derive(Default, Clone)]
-pub struct InMemoryStorage {
-    pub programs: Arc<RwLock<HashMap<ProgramId, Program>>>,
-    pub reports: Arc<RwLock<HashMap<ReportId, Report>>>,
-    pub events: Arc<RwLock<HashMap<EventId, Event>>>,
-    pub auth: Arc<RwLock<Vec<AuthInfo>>>,
-}
-
-impl DataSource for InMemoryStorage {
-    fn programs(&self) -> Arc<dyn ProgramCrud> {
-        self.programs.clone()
-    }
-
-    fn reports(&self) -> Arc<dyn ReportCrud> {
-        self.reports.clone()
-    }
-
-    fn events(&self) -> Arc<dyn EventCrud> {
-        self.events.clone()
-    }
-
-    fn auth(&self) -> Arc<dyn AuthSource> {
-        self.auth.clone()
-    }
-}
-
-#[async_trait]
-impl AuthSource for RwLock<Vec<AuthInfo>> {
-    async fn get_user(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo> {
-        self.read()
-            .await
-            .iter()
-            .find(|auth| auth.client_id == client_id && auth.client_secret == client_secret)
-            .cloned()
-    }
 }
