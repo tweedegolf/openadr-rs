@@ -53,3 +53,20 @@ where
         Ok(ValidatedQuery(value))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::jwt::AuthRole;
+    use crate::state::AppState;
+
+    pub(crate) fn get_admin_token_from_state(state: &AppState) -> String {
+        state
+            .jwt_manager
+            .create(
+                std::time::Duration::from_secs(3600),
+                "admin".to_string(),
+                vec![AuthRole::AnyBusiness, AuthRole::UserManager],
+            )
+            .unwrap()
+    }
+}

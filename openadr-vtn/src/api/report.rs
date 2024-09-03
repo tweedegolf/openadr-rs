@@ -12,7 +12,7 @@ use openadr_wire::program::ProgramId;
 use openadr_wire::report::{ReportContent, ReportId};
 use openadr_wire::Report;
 
-use crate::api::{AppResponse, ValidatedQuery};
+use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
 use crate::data_source::ReportCrud;
 use crate::error::AppError;
 use crate::jwt::{BusinessUser, User};
@@ -41,7 +41,7 @@ pub async fn get(
 pub async fn add(
     State(report_source): State<Arc<dyn ReportCrud>>,
     User(_user): User,
-    Json(new_report): Json<ReportContent>,
+    ValidatedJson(new_report): ValidatedJson<ReportContent>,
 ) -> Result<(StatusCode, Json<Report>), AppError> {
     let report = report_source.create(new_report).await?;
 
@@ -54,7 +54,7 @@ pub async fn edit(
     State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
     User(_user): User,
-    Json(content): Json<ReportContent>,
+    ValidatedJson(content): ValidatedJson<ReportContent>,
 ) -> AppResponse<Report> {
     let report = report_source.update(&id, content).await?;
 
@@ -91,18 +91,4 @@ pub struct QueryParams {
 
 fn get_50() -> i64 {
     50
-}
-
-impl QueryParams {
-    pub fn matches(&self, report: &Report) -> Result<bool, AppError> {
-        if let Some(event_id) = &self.event_id {
-            Ok(&report.content.event_id == event_id)
-        } else if let Some(client_name) = &self.client_name {
-            Ok(&report.content.client_name == client_name)
-        } else if let Some(program_id) = &self.program_id {
-            Ok(&report.content.program_id == program_id)
-        } else {
-            Ok(true)
-        }
-    }
 }

@@ -6,6 +6,7 @@ use axum_extra::extract::QueryRejection;
 use openadr_wire::problem::Problem;
 use openadr_wire::IdentifierError;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "sqlx")]
 use sqlx::error::DatabaseError;
 use tracing::{error, trace, warn};
 use uuid::Uuid;
@@ -24,8 +25,13 @@ pub enum AppError {
     BadRequest(&'static str),
     #[error("Not implemented {0}")]
     NotImplemented(&'static str),
+    #[cfg(feature = "sqlx")]
     #[error("Conflict: {0}")]
     Conflict(String, Option<Box<dyn DatabaseError>>),
+    #[cfg(not(feature = "sqlx"))]
+    #[error("Conflict: {0}")]
+    Conflict(String),
+    #[cfg(feature = "sqlx")]
     #[error("Unprocessable Content: {0}")]
     UnprocessableContent(String, Option<Box<dyn DatabaseError>>),
     #[error("Authentication error: {0}")]
@@ -139,8 +145,20 @@ impl AppError {
                     instance: Some(reference.to_string()),
                 }
             }
+            #[cfg(feature = "sqlx")]
             AppError::Conflict(err, db_err) => {
                 warn!(%reference, "Conflict: {}, DB err: {:?}", err, db_err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::CONFLICT.to_string()),
+                    status: StatusCode::CONFLICT,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            #[cfg(not(feature = "sqlx"))]
+            AppError::Conflict(err) => {
+                warn!(%reference, "Conflict: {}", err);
                 Problem {
                     r#type: Default::default(),
                     title: Some(StatusCode::CONFLICT.to_string()),
@@ -208,6 +226,7 @@ impl AppError {
                     instance: Some(reference.to_string()),
                 }
             }
+            #[cfg(feature = "sqlx")]
             AppError::UnprocessableContent(err, db_err) => {
                 trace!(%reference,
                     "Unprocessable Content: {}, DB details: {:?}",

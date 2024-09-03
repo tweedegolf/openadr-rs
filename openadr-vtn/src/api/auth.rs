@@ -79,7 +79,7 @@ impl IntoResponse for AccessTokenResponse {
 /// RFC 6749 client credentials grant flow
 pub async fn token(
     State(auth_source): State<Arc<dyn AuthSource>>,
-    State(jwt_manager): State<std::sync::Arc<JwtManager>>,
+    State(jwt_manager): State<Arc<JwtManager>>,
     authorization: Option<TypedHeader<Authorization<Basic>>>,
     Form(request): Form<AccessTokenRequest>,
 ) -> Result<AccessTokenResponse, ResponseOAuthError> {

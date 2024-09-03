@@ -276,6 +276,8 @@ mod tests {
     use sqlx::PgPool;
 
     use crate::api::event::QueryParams;
+    use crate::data_source::postgres::event::PgEventStorage;
+    use crate::data_source::Crud;
     use crate::error::AppError;
     use chrono::{DateTime, Duration, Utc};
     use openadr_wire::event::{EventContent, EventInterval, EventType, EventValuesMap};
@@ -364,8 +366,6 @@ mod tests {
 
     mod get_all {
         use super::*;
-        use crate::data_source::postgres::event::PgEventStorage;
-        use crate::data_source::Crud;
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn default_get_all(db: PgPool) {
@@ -507,8 +507,6 @@ mod tests {
 
     mod get {
         use super::*;
-        use crate::data_source::postgres::event::PgEventStorage;
-        use crate::data_source::Crud;
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn get_existing(db: PgPool) {
@@ -527,18 +525,16 @@ mod tests {
 
     mod add {
         use super::*;
-        use crate::data_source::postgres::event::PgEventStorage;
-        use crate::data_source::Crud;
 
         #[sqlx::test(fixtures("programs"))]
         async fn add(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let event = repo.create(event_1().content).await.unwrap();
             assert_eq!(event.content, event_1().content);
-            assert!(event.created_date_time < Utc::now() + Duration::hours(1));
-            assert!(event.created_date_time > Utc::now() - Duration::hours(1));
-            assert!(event.modification_date_time < Utc::now() + Duration::hours(1));
-            assert!(event.modification_date_time > Utc::now() - Duration::hours(1));
+            assert!(event.created_date_time < Utc::now() + Duration::minutes(10));
+            assert!(event.created_date_time > Utc::now() - Duration::minutes(10));
+            assert!(event.modification_date_time < Utc::now() + Duration::minutes(10));
+            assert!(event.modification_date_time > Utc::now() - Duration::minutes(10));
         }
 
         #[sqlx::test(fixtures("programs", "events"))]
@@ -551,8 +547,6 @@ mod tests {
 
     mod modify {
         use super::*;
-        use crate::data_source::postgres::event::PgEventStorage;
-        use crate::data_source::Crud;
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn updates_modify_time(db: PgPool) {
@@ -568,8 +562,8 @@ mod tests {
                     .parse::<DateTime<Utc>>()
                     .unwrap()
             );
-            assert!(event.modification_date_time < Utc::now() + Duration::hours(1));
-            assert!(event.modification_date_time > Utc::now() - Duration::hours(1));
+            assert!(event.modification_date_time < Utc::now() + Duration::minutes(10));
+            assert!(event.modification_date_time > Utc::now() - Duration::minutes(10));
         }
 
         #[sqlx::test(fixtures("programs", "events"))]
@@ -598,8 +592,6 @@ mod tests {
 
     mod delete {
         use super::*;
-        use crate::data_source::postgres::event::PgEventStorage;
-        use crate::data_source::Crud;
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn delete_existing(db: PgPool) {

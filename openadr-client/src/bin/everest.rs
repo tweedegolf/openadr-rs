@@ -32,7 +32,7 @@ struct ChronoClock;
 
 impl Clock for ChronoClock {
     fn now(&self) -> DateTime<Utc> {
-        chrono::Utc::now()
+        Utc::now()
     }
 }
 
@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let poll_interval = Duration::from_secs(30);
     tokio::spawn(poll_timeline(program, poll_interval, sender));
 
-    let (output_sender, mut output_receiver) = tokio::sync::mpsc::channel(1);
+    let (output_sender, mut output_receiver) = mpsc::channel(1);
     tokio::spawn(update_listener(ChronoClock, receiver, output_sender));
 
     tokio::spawn(async move {
@@ -60,8 +60,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 async fn poll_timeline(
     mut program: ProgramClient,
-    poll_interval: std::time::Duration,
-    sender: mpsc::Sender<Timeline>,
+    poll_interval: Duration,
+    sender: Sender<Timeline>,
 ) -> Result<(), openadr_client::Error> {
     loop {
         tokio::time::sleep(poll_interval).await;
@@ -95,7 +95,7 @@ async fn update_listener(
             () = wait_for_next_start(&clock, &timeline) => {
                 //  fall through
             }
-        };
+        }
 
         let now = clock.now();
 
@@ -146,7 +146,7 @@ async fn update_listener(
 #[derive(Debug, Clone, PartialEq)]
 struct EnforcedLimits {
     uuid: String,
-    valid_until: chrono::DateTime<chrono::Utc>,
+    valid_until: DateTime<Utc>,
     limits_root_side: LimitsRes,
     schedule: Vec<ScheduleResEntry>,
 }
@@ -154,7 +154,7 @@ struct EnforcedLimits {
 // https://github.com/tdittr/everest-core/blob/openadr/types/energy.yaml#L125
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ScheduleResEntry {
-    timestamp: chrono::DateTime<chrono::Utc>,
+    timestamp: DateTime<Utc>,
     limits_to_root: LimitsRes,
 }
 
@@ -208,7 +208,7 @@ mod test {
             )))
         }
 
-        async fn advance(&self, duration: std::time::Duration) {
+        async fn advance(&self, duration: Duration) {
             self.0
                 .fetch_add(duration.as_millis().try_into().unwrap(), Ordering::Relaxed);
             tokio::time::advance(duration).await;
@@ -223,8 +223,8 @@ mod test {
         let clock = TestingClock::new(chrono::DateTime::UNIX_EPOCH + (HOUR * 9) + (MINUTE * 42));
         let past = tokio::time::Instant::now();
 
-        let (input_sender, input_receiver) = tokio::sync::mpsc::channel(1);
-        let (output_sender, mut output_receiver) = tokio::sync::mpsc::channel(1);
+        let (input_sender, input_receiver) = mpsc::channel(1);
+        let (output_sender, mut output_receiver) = mpsc::channel(1);
 
         let handle = tokio::spawn(update_listener(
             Arc::clone(&clock),
@@ -279,7 +279,7 @@ mod test {
         );
     }
 
-    fn create_timeline(entries: Vec<(chrono::DateTime<Utc>, f64)>) -> Timeline {
+    fn create_timeline(entries: Vec<(DateTime<Utc>, f64)>) -> Timeline {
         let intervals = entries
             .into_iter()
             .map(|(start_time, value)| EventInterval {

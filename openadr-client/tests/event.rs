@@ -182,13 +182,31 @@ async fn retrieve_all_with_filter(db: PgPool) {
     assert_eq!(events.len(), 2);
 
     // event name
-    // FIXME check what the desired behavior is
-    //  Do we expect a NOT_IMPLEMENTED code,
-    //  because our server does not recognize the "NONSENSE" filter,
-    //  or because there is no value filled in?
-    //  In the first case, I would argue that we just store any private labels
-    //  and also filter on them, even if we don't understand them, in the second case,
-    //  I would expect a BAD_REQUEST status code
+    let events = client
+        .get_events_request(
+            Filter::By(TargetLabel::Private("NONSENSE".to_string()), &["test"]),
+            PaginationOptions { skip: 0, limit: 2 },
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 0);
+
+    let err = client
+        .get_events_request(
+            Filter::By(TargetLabel::Private("NONSENSE".to_string()), &[""]),
+            PaginationOptions { skip: 0, limit: 2 },
+        )
+        .await
+        .unwrap_err();
+    let Error::Problem(problem) = err else {
+        unreachable!()
+    };
+    assert_eq!(
+        problem.status,
+        StatusCode::BAD_REQUEST,
+        "Do return BAD_REQUEST on empty targetValue"
+    );
+
     let err = client
         .get_events_request(
             Filter::By(TargetLabel::Private("NONSENSE".to_string()), &[]),
@@ -199,7 +217,11 @@ async fn retrieve_all_with_filter(db: PgPool) {
     let Error::Problem(problem) = err else {
         unreachable!()
     };
-    assert_eq!(problem.status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(
+        problem.status,
+        StatusCode::BAD_REQUEST,
+        "Do return BAD_REQUEST on empty targetValue"
+    );
 
     let events = client
         .get_events_request(
@@ -208,7 +230,16 @@ async fn retrieve_all_with_filter(db: PgPool) {
         )
         .await
         .unwrap();
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
+
+    let events = client
+        .get_events_request(
+            Filter::By(TargetLabel::ProgramName, &["program2"]),
+            PaginationOptions { skip: 0, limit: 50 },
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 0);
 }
 
 #[sqlx::test(fixtures("users"))]
@@ -246,4 +277,27 @@ async fn get_program_events(db: PgPool) {
 
     assert_eq!(events1[0].content(), &event1);
     assert_eq!(events2[0].content(), &event2);
+}
+
+#[sqlx::test(fixtures("users"))]
+async fn filter_constraint_violation(db: PgPool) {
+    let client = common::setup_client(db).await;
+
+    let err = client
+        .get_events_request(None, Filter::None, PaginationOptions { skip: 0, limit: 51 })
+        .await
+        .unwrap_err();
+    let Error::Problem(problem) = err else {
+        unreachable!()
+    };
+    assert_eq!(problem.status, StatusCode::BAD_REQUEST);
+
+    let err = client
+        .get_events_request(None, Filter::None, PaginationOptions { skip: 0, limit: 0 })
+        .await
+        .unwrap_err();
+    let Error::Problem(problem) = err else {
+        unreachable!()
+    };
+    assert_eq!(problem.status, StatusCode::BAD_REQUEST);
 }

@@ -1,23 +1,23 @@
 //! Types used for the `program/` endpoint
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
-use std::fmt::Display;
-use std::str::FromStr;
-
 use crate::event::EventPayloadDescriptor;
 use crate::interval::IntervalPeriod;
 use crate::report::ReportPayloadDescriptor;
 use crate::target::TargetMap;
 use crate::{Duration, IdentifierError};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
+use std::fmt::Display;
+use std::str::FromStr;
+use validator::Validate;
 
 use super::Identifier;
 
 pub type Programs = Vec<Program>;
 
 /// Provides program specific metadata from VTN to VEN.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Program {
     /// VTN provisioned on object creation.
@@ -38,11 +38,12 @@ pub struct Program {
     pub modification_date_time: DateTime<Utc>,
 
     #[serde(flatten)]
+    #[validate(nested)]
     pub content: ProgramContent,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgramContent {
     /// Used as discriminator, e.g. notification.object
@@ -72,6 +73,7 @@ pub struct ProgramContent {
     pub time_zone_offset: Option<Duration>,
     pub interval_period: Option<IntervalPeriod>,
     /// A list of programDescriptions
+    #[validate(nested)]
     pub program_descriptions: Option<Vec<ProgramDescription>>,
     /// True if events are fixed once transmitted.
     pub binding_events: Option<bool>,
@@ -143,10 +145,11 @@ pub enum ProgramObjectType {
     Program,
 }
 
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, Validate)]
 pub struct ProgramDescription {
     /// A human or machine readable program description
     #[serde(rename = "URL")]
+    #[validate(url)]
     pub url: String,
 }
 

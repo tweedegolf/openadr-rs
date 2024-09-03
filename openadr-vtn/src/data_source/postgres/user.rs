@@ -13,7 +13,6 @@ impl From<PgPool> for PgAuthSource {
 }
 
 struct PgUser {
-    id: String,
     client_id: String,
     client_secret: String,
     roles: Vec<serde_json::Value>,
@@ -41,8 +40,7 @@ impl AuthSource for PgAuthSource {
         sqlx::query_as!(
             PgUser,
             r#"
-            SELECT id, 
-                   client_id,
+            SELECT client_id,
                    client_secret,
                    array_agg(role) AS "roles!"
             FROM "user" u

@@ -7,8 +7,32 @@ use openadr_wire::report::{ReportContent, ReportId};
 use openadr_wire::Report;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 impl ReportCrud for RwLock<HashMap<ReportId, Report>> {}
+
+pub fn new_report(content: ReportContent) -> Report {
+    Report {
+        id: format!("report-{}", Uuid::new_v4()).parse().unwrap(),
+        created_date_time: Utc::now(),
+        modification_date_time: Utc::now(),
+        content,
+    }
+}
+
+impl QueryParams {
+    pub fn matches(&self, report: &Report) -> Result<bool, AppError> {
+        if let Some(event_id) = &self.event_id {
+            Ok(&report.content.event_id == event_id)
+        } else if let Some(client_name) = &self.client_name {
+            Ok(&report.content.client_name == client_name)
+        } else if let Some(program_id) = &self.program_id {
+            Ok(&report.content.program_id == program_id)
+        } else {
+            Ok(true)
+        }
+    }
+}
 
 #[async_trait]
 impl Crud for RwLock<HashMap<ReportId, Report>> {
@@ -26,7 +50,7 @@ impl Crud for RwLock<HashMap<ReportId, Report>> {
     //        schema:
     //        $ref: '#/components/schemas/problem'
     async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
-        let event = Report::new(content);
+        let event = new_report(content);
         self.write().await.insert(event.id.clone(), event.clone());
         Ok(event)
     }

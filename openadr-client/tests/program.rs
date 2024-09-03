@@ -193,7 +193,38 @@ async fn retrieve_all_with_filter(db: PgPool) {
     let Error::Problem(problem) = err else {
         unreachable!()
     };
-    assert_eq!(problem.status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(
+        problem.status,
+        StatusCode::BAD_REQUEST,
+        "Do return BAD_REQUEST on empty targetValue"
+    );
+
+    let err = client
+        .get_programs_request(
+            Some(TargetLabel::Private("NONSENSE".to_string())),
+            &[""],
+            PaginationOptions { skip: 0, limit: 2 },
+        )
+        .await
+        .unwrap_err();
+    let Error::Problem(problem) = err else {
+        unreachable!()
+    };
+    assert_eq!(
+        problem.status,
+        StatusCode::BAD_REQUEST,
+        "Do return BAD_REQUEST on empty targetValue"
+    );
+
+    let programs = client
+        .get_programs_request(
+            Some(TargetLabel::Private("NONSENSE".to_string())),
+            &["test"],
+            PaginationOptions { skip: 0, limit: 50 },
+        )
+        .await
+        .unwrap();
+    assert_eq!(programs.len(), 0);
 
     let programs = client
         .get_programs_request(

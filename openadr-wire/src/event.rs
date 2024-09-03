@@ -1,21 +1,21 @@
 //! Types used for the `event/` endpoint
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
-use std::fmt::{Display, Formatter};
-use std::str::FromStr;
-
 use crate::interval::IntervalPeriod;
 use crate::program::ProgramId;
 use crate::report::ReportDescriptor;
 use crate::target::TargetMap;
 use crate::values_map::Value;
 use crate::{Identifier, IdentifierError, Unit};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
+use validator::Validate;
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
 /// start time and duration of intervals.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
     /// URL safe VTN assigned object ID.
@@ -27,11 +27,12 @@ pub struct Event {
     #[serde(with = "crate::serde_rfc3339")]
     pub modification_date_time: DateTime<Utc>,
     #[serde(flatten)]
+    #[validate(nested)]
     pub content: EventContent,
 }
 
 #[skip_serializing_none]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct EventContent {
     /// Used as discriminator, e.g. notification.object

@@ -42,7 +42,8 @@ dotenvy = {workspace = true, optional = true}
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
+tracing-test.workspace = true
 
 [features]
-live-db-test = []
+live-db-test = ["postgres"]
 postgres = ["sqlx/postgres", "dep:dotenvy"]

@@ -4,11 +4,55 @@ use crate::error::AppError;
 use axum::async_trait;
 use chrono::Utc;
 use openadr_wire::event::{EventContent, EventId};
+use openadr_wire::target::TargetLabel;
 use openadr_wire::Event;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 impl EventCrud for RwLock<HashMap<EventId, Event>> {}
+
+pub fn new_event(content: EventContent) -> Event {
+    Event {
+        id: format!("event-{}", Uuid::new_v4()).parse().unwrap(),
+        created_date_time: Utc::now(),
+        modification_date_time: Utc::now(),
+        content,
+    }
+}
+
+impl QueryParams {
+    pub fn matches(&self, event: &Event) -> Result<bool, AppError> {
+        if let Some(program_id) = &self.program_id {
+            if &event.content.program_id != program_id {
+                return Ok(false);
+            }
+        }
+
+        if let Some(target_type) = self.target_type.as_ref() {
+            match target_type {
+                TargetLabel::EventName => {
+                    let Some(ref event_name) = event.content.event_name else {
+                        return Ok(false);
+                    };
+
+                    let Some(target_values) = &self.target_values else {
+                        return Err(AppError::BadRequest(
+                            "If targetType is specified, targetValues must be specified as well",
+                        ));
+                    };
+
+                    Ok(target_values.iter().any(|name| name == event_name))
+                }
+                _ => Err(AppError::NotImplemented(
+                    "only filtering by event name is supported",
+                )),
+            }
+        } else {
+            Ok(true)
+        }
+    }
+}
 
 #[async_trait]
 impl Crud for RwLock<HashMap<EventId, Event>> {
@@ -19,7 +63,7 @@ impl Crud for RwLock<HashMap<EventId, Event>> {
     type Filter = QueryParams;
 
     async fn create(&self, content: Self::NewType) -> Result<Self::Type, Self::Error> {
-        let event = Event::new(content);
+        let event = new_event(content);
         self.write().await.insert(event.id.clone(), event.clone());
         Ok(event)
     }

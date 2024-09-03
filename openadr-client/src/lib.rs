@@ -37,8 +37,8 @@ pub(crate) use openadr_wire::{
 
 #[async_trait]
 trait HttpClient: Debug {
-    fn request_builder(&self, method: reqwest::Method, url: Url) -> reqwest::RequestBuilder;
-    async fn send(&self, req: reqwest::RequestBuilder) -> reqwest::Result<Response>;
+    fn request_builder(&self, method: Method, url: Url) -> RequestBuilder;
+    async fn send(&self, req: RequestBuilder) -> reqwest::Result<Response>;
 }
 
 /// Client used for interaction with a VTN.
@@ -102,7 +102,7 @@ impl Debug for AuthToken {
 #[derive(Debug)]
 pub struct ClientRef {
     client: Box<dyn HttpClient + Send + Sync>,
-    base_url: url::Url,
+    base_url: Url,
     default_page_size: usize,
     auth_data: Option<ClientCredentials>,
     auth_token: RwLock<Option<AuthToken>>,
@@ -155,7 +155,7 @@ impl ClientRef {
         let res = self.client.send(request).await?;
         if !res.status().is_success() {
             let problem = res.json::<openadr_wire::oauth::OAuthError>().await?;
-            return Err(crate::Error::AuthProblem(problem));
+            return Err(Error::AuthProblem(problem));
         }
 
         #[derive(Debug, serde::Deserialize)]
@@ -175,7 +175,7 @@ impl ClientRef {
 
         let auth_result = res.json::<AuthResult>().await?;
         if auth_result.token_type.to_lowercase() != "bearer" {
-            return Err(crate::Error::OAuthTokenNotBearer);
+            return Err(Error::OAuthTokenNotBearer);
         }
         let token = AuthToken {
             token: auth_result.access_token,
@@ -192,7 +192,7 @@ impl ClientRef {
 
     async fn request<T: serde::de::DeserializeOwned>(
         &self,
-        mut request: reqwest::RequestBuilder,
+        mut request: RequestBuilder,
         query: &[(&str, &str)],
     ) -> Result<T> {
         self.ensure_auth().await?;
@@ -270,7 +270,7 @@ pub struct ReqwestClientRef {
 
 #[async_trait]
 impl HttpClient for ReqwestClientRef {
-    fn request_builder(&self, method: reqwest::Method, url: Url) -> RequestBuilder {
+    fn request_builder(&self, method: Method, url: Url) -> RequestBuilder {
         self.client.request(method, url)
     }
 
@@ -306,11 +306,11 @@ impl MockClientRef {
 
 #[async_trait]
 impl HttpClient for MockClientRef {
-    fn request_builder(&self, method: reqwest::Method, url: Url) -> RequestBuilder {
+    fn request_builder(&self, method: Method, url: Url) -> RequestBuilder {
         reqwest::Client::new().request(method, url)
     }
 
-    async fn send(&self, req: reqwest::RequestBuilder) -> reqwest::Result<reqwest::Response> {
+    async fn send(&self, req: RequestBuilder) -> reqwest::Result<Response> {
         let request = axum::http::Request::try_from(req.build().unwrap()).unwrap();
 
         let response =
@@ -424,9 +424,9 @@ impl Client {
             .await?;
 
         match programs[..] {
-            [] => Err(crate::Error::ObjectNotFound),
+            [] => Err(Error::ObjectNotFound),
             [_] => Ok(programs.remove(0)),
-            [..] => Err(crate::Error::DuplicateObject),
+            [..] => Err(Error::DuplicateObject),
         }
     }
 

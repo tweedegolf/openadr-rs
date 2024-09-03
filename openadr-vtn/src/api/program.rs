@@ -11,7 +11,7 @@ use openadr_wire::program::{ProgramContent, ProgramId};
 use openadr_wire::target::TargetLabel;
 use openadr_wire::Program;
 
-use crate::api::{AppResponse, ValidatedQuery};
+use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
 use crate::data_source::ProgramCrud;
 use crate::error::AppError;
 use crate::jwt::{BusinessUser, User};
@@ -40,7 +40,7 @@ pub async fn get(
 pub async fn add(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     BusinessUser(_user): BusinessUser,
-    Json(new_program): Json<ProgramContent>,
+    ValidatedJson(new_program): ValidatedJson<ProgramContent>,
 ) -> Result<(StatusCode, Json<Program>), AppError> {
     let program = program_source.create(new_program).await?;
 
@@ -51,7 +51,7 @@ pub async fn edit(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     Path(id): Path<ProgramId>,
     BusinessUser(_user): BusinessUser,
-    Json(content): Json<ProgramContent>,
+    ValidatedJson(content): ValidatedJson<ProgramContent>,
 ) -> AppResponse<Program> {
     let program = program_source.update(&id, content).await?;
 
@@ -97,34 +97,12 @@ fn get_50() -> i64 {
     50
 }
 
-impl QueryParams {
-    pub fn matches(&self, program: &Program) -> Result<bool, AppError> {
-        if let Some(target_type) = self.target_type.clone() {
-            return match target_type {
-                TargetLabel::ProgramName => Ok(self
-                    .target_values
-                    .clone()
-                    .ok_or(AppError::BadRequest(
-                        "If targetType is specified, targetValues must be specified as well",
-                    ))?
-                    .into_iter()
-                    .any(|name| name == program.content.program_name)),
-                _ => Err(AppError::NotImplemented(
-                    "Program can only be filtered by name",
-                )),
-            };
-        }
-        Ok(true)
-    }
-}
-
 #[cfg(test)]
+#[cfg(feature = "live-db-test")]
 mod test {
-    use crate::{
-        data_source::PostgresStorage,
-        jwt::{AuthRole, JwtManager},
-        state::AppState,
-    };
+    use crate::{data_source::PostgresStorage, jwt::JwtManager, state::AppState};
+
+    use crate::api::test::*;
 
     use super::*;
     // for `collect`
@@ -135,6 +113,7 @@ mod test {
         Router,
     };
     use http_body_util::BodyExt;
+    use openadr_wire::Event;
     use sqlx::PgPool;
     use tower::{Service, ServiceExt};
     // for `call`, `oneshot`, and `ready`
@@ -186,17 +165,6 @@ mod test {
             AppState::new(store, JwtManager::from_base64_secret("test").unwrap()),
             programs,
         )
-    }
-
-    fn get_admin_token_from_state(state: &AppState) -> String {
-        state
-            .jwt_manager
-            .create(
-                std::time::Duration::from_secs(3600),
-                "admin".to_string(),
-                vec![AuthRole::AnyBusiness, AuthRole::UserManager],
-            )
-            .unwrap()
     }
 
     #[sqlx::test(fixtures("users"))]
@@ -414,6 +382,12 @@ mod test {
         let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 2);
 
+        let response = retrieve_all_with_filter_help(&mut app, "skip=-1", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = retrieve_all_with_filter_help(&mut app, "skip=0", &token).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
         // limit
         let response = retrieve_all_with_filter_help(&mut app, "limit=2", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
@@ -422,9 +396,40 @@ mod test {
         let programs: Vec<Program> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 2);
 
+        let response = retrieve_all_with_filter_help(&mut app, "limit=-1", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = retrieve_all_with_filter_help(&mut app, "limit=0", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
         // program name
         let response = retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE", &token).await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Do return BAD_REQUEST on empty targetValue"
+        );
+
+        let response =
+            retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE&targetValues", &token)
+                .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Do return BAD_REQUEST on empty targetValue"
+        );
+
+        let response = retrieve_all_with_filter_help(
+            &mut app,
+            "targetType=NONSENSE&targetValues=test",
+            &token,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 0);
 
         let response = retrieve_all_with_filter_help(
             &mut app,

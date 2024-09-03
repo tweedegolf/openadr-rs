@@ -13,10 +13,9 @@ use openadr_wire::program::ProgramId;
 use openadr_wire::target::TargetLabel;
 use openadr_wire::Event;
 
-use crate::api::{AppResponse, ValidatedQuery};
+use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
 use crate::data_source::EventCrud;
 use crate::error::AppError;
-use crate::error::AppError::NotImplemented;
 use crate::jwt::{BusinessUser, User};
 
 pub async fn get_all(
@@ -43,7 +42,7 @@ pub async fn get(
 pub async fn add(
     State(event_source): State<Arc<dyn EventCrud>>,
     BusinessUser(_user): BusinessUser,
-    Json(new_event): Json<EventContent>,
+    ValidatedJson(new_event): ValidatedJson<EventContent>,
 ) -> Result<(StatusCode, Json<Event>), AppError> {
     let event = event_source.create(new_event).await?;
 
@@ -56,7 +55,7 @@ pub async fn edit(
     State(event_source): State<Arc<dyn EventCrud>>,
     Path(id): Path<EventId>,
     BusinessUser(_user): BusinessUser,
-    Json(content): Json<EventContent>,
+    ValidatedJson(content): ValidatedJson<EventContent>,
 ) -> AppResponse<Event> {
     let event = event_source.update(&id, content).await?;
 
@@ -104,46 +103,13 @@ fn get_50() -> i64 {
     50
 }
 
-impl QueryParams {
-    pub fn matches(&self, event: &Event) -> Result<bool, AppError> {
-        if let Some(program_id) = &self.program_id {
-            if &event.content.program_id != program_id {
-                return Ok(false);
-            }
-        }
-
-        if let Some(target_type) = self.target_type.as_ref() {
-            match target_type {
-                TargetLabel::EventName => {
-                    let Some(ref event_name) = event.content.event_name else {
-                        return Ok(false);
-                    };
-
-                    let Some(target_values) = &self.target_values else {
-                        return Err(AppError::BadRequest(
-                            "If targetType is specified, targetValues must be specified as well",
-                        ));
-                    };
-
-                    Ok(target_values.iter().any(|name| name == event_name))
-                }
-                _ => Err(NotImplemented("only filtering by event name is supported")),
-            }
-        } else {
-            Ok(true)
-        }
-    }
-}
-
 #[cfg(test)]
+#[cfg(feature = "live-db-test")]
 mod test {
-    use crate::{
-        data_source::PostgresStorage,
-        jwt::{AuthRole, JwtManager},
-        state::AppState,
-    };
+    use crate::{data_source::PostgresStorage, jwt::JwtManager, state::AppState};
 
     use super::*;
+    use crate::api::test::*;
     // for `call`, `oneshot`, and `ready`
     use crate::data_source::DataSource;
     use axum::{
@@ -197,17 +163,6 @@ mod test {
             AppState::new(store, JwtManager::from_base64_secret("test").unwrap()),
             events,
         )
-    }
-
-    fn get_admin_token_from_state(state: &AppState) -> String {
-        state
-            .jwt_manager
-            .create(
-                std::time::Duration::from_secs(3600),
-                "admin".to_string(),
-                vec![AuthRole::AnyBusiness, AuthRole::UserManager],
-            )
-            .unwrap()
     }
 
     #[sqlx::test(fixtures("programs"))]
@@ -311,7 +266,7 @@ mod test {
         assert!(event.modification_date_time < db_program.modification_date_time);
     }
 
-    #[sqlx::test(fixtures("users", "programs"))]
+    #[sqlx::test(fixtures("programs"))]
     async fn create_same_name(db: PgPool) {
         let (state, _) = state_with_events(vec![], db).await;
         let token = get_admin_token_from_state(&state);
@@ -407,6 +362,12 @@ mod test {
         let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 2);
 
+        let response = retrieve_all_with_filter_help(&mut app, "skip=-1", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = retrieve_all_with_filter_help(&mut app, "skip=0", &token).await;
+        assert_eq!(response.status(), StatusCode::OK);
+
         // limit
         let response = retrieve_all_with_filter_help(&mut app, "limit=2", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
@@ -415,19 +376,66 @@ mod test {
         let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 2);
 
+        let response = retrieve_all_with_filter_help(&mut app, "limit=-1", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = retrieve_all_with_filter_help(&mut app, "limit=0", &token).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
         // program name
         let response = retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE", &token).await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Do return BAD_REQUEST on empty targetValue"
+        );
+
+        let response =
+            retrieve_all_with_filter_help(&mut app, "targetType=NONSENSE&targetValues", &token)
+                .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Do return BAD_REQUEST on empty targetValue"
+        );
 
         let response = retrieve_all_with_filter_help(
             &mut app,
-            "targetType=PROGRAM_NAME&targetValues=program1&targetValues=program2",
+            "targetType=NONSENSE&targetValues=test",
             &token,
         )
         .await;
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(response.status(), StatusCode::OK);
 
-        let response = retrieve_all_with_filter_help(&mut app, "programID=program1", &token).await;
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 0);
+
+        let response = retrieve_all_with_filter_help(
+            &mut app,
+            "targetType=PROGRAM_NAME&targetValues=program-1&targetValues=program-2",
+            &token,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 3);
+
+        let response = retrieve_all_with_filter_help(
+            &mut app,
+            "targetType=PROGRAM_NAME&targetValues=program-1",
+            &token,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(programs.len(), 1);
+
+        let response = retrieve_all_with_filter_help(&mut app, "programID=program-1", &token).await;
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = response.into_body().collect().await.unwrap().to_bytes();

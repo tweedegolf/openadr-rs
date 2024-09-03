@@ -1,21 +1,20 @@
 //! Types used for the `report/` endpoint
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
-use std::fmt::{Display, Formatter};
-use std::str::FromStr;
-use uuid::Uuid;
-
 use crate::event::EventId;
 use crate::interval::{Interval, IntervalPeriod};
 use crate::program::ProgramId;
 use crate::target::TargetMap;
 use crate::values_map::Value;
 use crate::{Identifier, IdentifierError, Unit};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
+use validator::{Validate, ValidateRange};
 
 /// report object.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct Report {
     /// URL safe VTN assigned object ID.
@@ -27,11 +26,12 @@ pub struct Report {
     #[serde(with = "crate::serde_rfc3339")]
     pub modification_date_time: DateTime<Utc>,
     #[serde(flatten)]
+    #[validate(nested)]
     pub content: ReportContent,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportContent {
     /// Used as discriminator, e.g. notification.object
@@ -51,6 +51,7 @@ pub struct ReportContent {
     /// A list of reportPayloadDescriptors.
     ///
     /// An optional list of objects that provide context to payload types.
+    #[validate(nested)]
     pub payload_descriptors: Option<Vec<ReportPayloadDescriptor>>,
     /// A list of objects containing report data for a set of resources.
     pub resources: Vec<Resource>,
@@ -75,21 +76,6 @@ impl ReportContent {
     pub fn with_resources(mut self, resources: Vec<Resource>) -> Self {
         self.resources = resources;
         self
-    }
-}
-
-impl Report {
-    pub fn new(content: ReportContent) -> Self {
-        Self {
-            id: ReportId(
-                format!("report-{}", Uuid::new_v4())
-                    .parse::<Identifier>()
-                    .unwrap(),
-            ),
-            created_date_time: Utc::now(),
-            modification_date_time: Utc::now(),
-            content,
-        }
     }
 }
 
@@ -225,8 +211,8 @@ fn pos_one() -> i32 {
 /// Contextual information used to interpret report payload values. E.g. a USAGE payload simply
 /// contains a usage value, an associated descriptor provides necessary context such as units and
 /// data quality.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportPayloadDescriptor {
     /// Enumerated or private string signifying the nature of values.
@@ -239,6 +225,7 @@ pub struct ReportPayloadDescriptor {
     /// A quantification of the accuracy of a set of payload values.
     pub accuracy: Option<f32>,
     /// A quantification of the confidence in a set of payload values.
+    #[validate(range(min = Confidence(0), max = Confidence(100)))]
     pub confidence: Option<Confidence>,
 }
 
@@ -254,9 +241,18 @@ impl ReportPayloadDescriptor {
     }
 }
 
-// TODO: Add range checks
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, PartialOrd)]
 pub struct Confidence(u8);
+
+impl ValidateRange<Confidence> for Confidence {
+    fn greater_than(&self, _: Confidence) -> Option<bool> {
+        None
+    }
+
+    fn less_than(&self, _: Confidence) -> Option<bool> {
+        None
+    }
+}
 
 /// An object defining a temporal window and a list of valuesMaps. if intervalPeriod present may set
 /// temporal aspects of interval or override event.intervalPeriod.
@@ -354,7 +350,7 @@ mod tests {
     #[test]
     fn descriptor_parses_minimal() {
         let json = r#"{"payloadType":"hello"}"#;
-        let expected = ReportDescriptor::new(crate::report::ReportType::Private("hello".into()));
+        let expected = ReportDescriptor::new(ReportType::Private("hello".into()));
 
         assert_eq!(
             serde_json::from_str::<ReportDescriptor>(json).unwrap(),

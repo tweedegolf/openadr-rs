@@ -73,7 +73,7 @@ impl ProgramClient {
     /// Create a new event on the VTN
     pub async fn create_event(&self, event_data: EventContent) -> Result<EventClient> {
         if &event_data.program_id != self.id() {
-            return Err(crate::Error::InvalidParentObject);
+            return Err(Error::InvalidParentObject);
         }
         let event = self
             .client

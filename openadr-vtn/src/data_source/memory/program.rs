@@ -4,12 +4,44 @@ use crate::error::AppError;
 use axum::async_trait;
 use chrono::Utc;
 use openadr_wire::program::{ProgramContent, ProgramId};
+use openadr_wire::target::TargetLabel;
 use openadr_wire::Program;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
+use uuid::Uuid;
 
 impl ProgramCrud for RwLock<HashMap<ProgramId, Program>> {}
+
+pub fn new_program(content: ProgramContent) -> Program {
+    Program {
+        id: format!("program-{}", Uuid::new_v4()).parse().unwrap(),
+        created_date_time: Utc::now(),
+        modification_date_time: Utc::now(),
+        content,
+    }
+}
+
+impl QueryParams {
+    pub fn matches(&self, program: &Program) -> Result<bool, AppError> {
+        if let Some(target_type) = self.target_type.clone() {
+            return match target_type {
+                TargetLabel::ProgramName => Ok(self
+                    .target_values
+                    .clone()
+                    .ok_or(AppError::BadRequest(
+                        "If targetType is specified, targetValues must be specified as well",
+                    ))?
+                    .into_iter()
+                    .any(|name| name == program.content.program_name)),
+                _ => Err(AppError::NotImplemented(
+                    "Program can only be filtered by name",
+                )),
+            };
+        }
+        Ok(true)
+    }
+}
 
 #[async_trait]
 impl Crud for RwLock<HashMap<ProgramId, Program>> {
@@ -33,7 +65,7 @@ impl Crud for RwLock<HashMap<ProgramId, Program>> {
             )));
         }
 
-        let program = Program::new(new);
+        let program = new_program(new);
         self.write()
             .await
             .insert(program.id.clone(), program.clone());

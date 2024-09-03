@@ -124,16 +124,16 @@ impl Display for Identifier {
 
 /// An ISO 8601 formatted duration
 #[derive(Clone, Debug, PartialEq)]
-pub struct Duration(::iso8601_duration::Duration);
+pub struct Duration(iso8601_duration::Duration);
 
 impl<'de> Deserialize<'de> for Duration {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
         let raw = String::deserialize(deserializer)?;
         let duration = raw
-            .parse::<::iso8601_duration::Duration>()
+            .parse::<iso8601_duration::Duration>()
             .map_err(|_| "iso8601_duration::ParseDurationError")
             .map_err(serde::de::Error::custom)?;
 
@@ -144,7 +144,7 @@ impl<'de> Deserialize<'de> for Duration {
 impl Serialize for Duration {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
         self.to_string().serialize(serializer)
     }
@@ -164,7 +164,7 @@ impl Duration {
     }
 
     /// One (1) hour
-    pub const PT1H: Self = Self(::iso8601_duration::Duration {
+    pub const PT1H: Self = Self(iso8601_duration::Duration {
         year: 0.0,
         month: 0.0,
         day: 0.0,
@@ -175,7 +175,7 @@ impl Duration {
 
     /// Indicates that an event's intervals continue indefinitely into the future until the event is
     /// deleted or modified. This effectively represents an infinite duration.
-    pub const P999Y: Self = Self(::iso8601_duration::Duration {
+    pub const P999Y: Self = Self(iso8601_duration::Duration {
         year: 9999.0,
         month: 0.0,
         day: 0.0,
@@ -185,7 +185,7 @@ impl Duration {
     });
 
     pub const fn hours(hour: f32) -> Self {
-        Self(::iso8601_duration::Duration {
+        Self(iso8601_duration::Duration {
             year: 0.0,
             month: 0.0,
             day: 0.0,
@@ -197,17 +197,17 @@ impl Duration {
 }
 
 impl std::str::FromStr for Duration {
-    type Err = ::iso8601_duration::ParseDurationError;
+    type Err = iso8601_duration::ParseDurationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let duration = s.parse::<::iso8601_duration::Duration>()?;
+        let duration = s.parse::<iso8601_duration::Duration>()?;
         Ok(Self(duration))
     }
 }
 
 impl Display for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ::iso8601_duration::Duration {
+        let iso8601_duration::Duration {
             year,
             month,
             day,
@@ -406,7 +406,7 @@ mod tests {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
             // the iso8601_duration library uses an f32 to store the values, which starts losing
             // precision at 24-bit integers.
-            super::Duration(::iso8601_duration::Duration {
+            super::Duration(iso8601_duration::Duration {
                 year: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,
                 month: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,
                 day: (<u32 as quickcheck::Arbitrary>::arbitrary(g) & 0x00FF_FFFF) as f32,

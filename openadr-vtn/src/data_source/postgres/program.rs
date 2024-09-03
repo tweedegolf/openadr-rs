@@ -301,3 +301,292 @@ impl Crud for PgProgramStorage {
         .try_into()?)
     }
 }
+
+#[cfg(test)]
+#[cfg(feature = "live-db-test")]
+mod tests {
+    use crate::api::program::QueryParams;
+    use crate::data_source::postgres::program::PgProgramStorage;
+    use crate::data_source::Crud;
+    use crate::error::AppError;
+    use openadr_wire::event::{EventPayloadDescriptor, EventType};
+    use openadr_wire::interval::IntervalPeriod;
+    use openadr_wire::program::{PayloadDescriptor, ProgramContent, ProgramDescription};
+    use openadr_wire::target::{TargetEntry, TargetLabel, TargetMap};
+    use openadr_wire::Program;
+    use sqlx::PgPool;
+
+    impl Default for QueryParams {
+        fn default() -> Self {
+            Self {
+                target_type: None,
+                target_values: None,
+                skip: 0,
+                limit: 50,
+            }
+        }
+    }
+
+    fn program_1() -> Program {
+        Program {
+            id: "program-1".parse().unwrap(),
+            created_date_time: "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+            modification_date_time: "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+            content: ProgramContent {
+                object_type: Default::default(),
+                program_name: "program-1".to_string(),
+                program_long_name: Some("program long name".to_string()),
+                retailer_name: Some("retailer name".to_string()),
+                retailer_long_name: Some("retailer long name".to_string()),
+                program_type: Some("program type".to_string()),
+                country: Some("country".to_string()),
+                principal_subdivision: Some("principal-subdivision".to_string()),
+                time_zone_offset: None,
+                interval_period: Some(IntervalPeriod::new(
+                    "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+                )),
+                program_descriptions: Some(vec![ProgramDescription {
+                    url: "https://program-description-1.com".to_string(),
+                }]),
+                binding_events: Some(false),
+                local_price: Some(true),
+                payload_descriptors: Some(vec![PayloadDescriptor::EventPayloadDescriptor(
+                    EventPayloadDescriptor::new(EventType::ExportPrice),
+                )]),
+                targets: Some(TargetMap(vec![TargetEntry {
+                    label: TargetLabel::Group,
+                    values: ["group-1".to_string()],
+                }])),
+            },
+        }
+    }
+
+    fn program_2() -> Program {
+        Program {
+            id: "program-2".parse().unwrap(),
+            created_date_time: "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+            modification_date_time: "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+            content: ProgramContent {
+                object_type: Default::default(),
+                program_name: "program-2".to_string(),
+                program_long_name: None,
+                retailer_name: None,
+                retailer_long_name: None,
+                program_type: None,
+                country: None,
+                principal_subdivision: None,
+                time_zone_offset: None,
+                interval_period: None,
+                program_descriptions: None,
+                binding_events: None,
+                local_price: None,
+                payload_descriptors: None,
+                targets: None,
+            },
+        }
+    }
+
+    mod get_all {
+        use super::*;
+        use openadr_wire::target::TargetLabel;
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn default_get_all(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+            let programs = repo.retrieve_all(&Default::default()).await.unwrap();
+            assert_eq!(programs.len(), 2);
+            assert_eq!(programs, vec![program_2(), program_1()]);
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn limit_get_all(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+            let programs = repo
+                .retrieve_all(&QueryParams {
+                    limit: 1,
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 1);
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn skip_get_all(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+            let programs = repo
+                .retrieve_all(&QueryParams {
+                    skip: 1,
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 1);
+
+            let programs = repo
+                .retrieve_all(&QueryParams {
+                    skip: 2,
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 0);
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn filter_target_get_all(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+
+            let programs = repo
+                .retrieve_all(&QueryParams {
+                    target_type: Some(TargetLabel::Group),
+                    target_values: Some(vec!["group-1".to_string()]),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 1);
+
+            let programs = repo
+                .retrieve_all(&QueryParams {
+                    target_type: Some(TargetLabel::Group),
+                    target_values: Some(vec!["not-existent".to_string()]),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 0);
+
+            let programs = repo
+                .retrieve_all(&QueryParams {
+                    target_type: Some(TargetLabel::ProgramName),
+                    target_values: Some(vec!["program-2".to_string()]),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 1);
+            assert_eq!(programs, vec![program_2()]);
+
+            let programs = repo
+                .retrieve_all(&QueryParams {
+                    target_type: Some(TargetLabel::ProgramName),
+                    target_values: Some(vec!["program-not-existent".to_string()]),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 0);
+        }
+    }
+
+    mod get {
+        use super::*;
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn get_existing(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+
+            let program = repo.retrieve(&"program-1".parse().unwrap()).await.unwrap();
+            assert_eq!(program, program_1());
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn get_not_existent(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+            let program = repo
+                .retrieve(&"program-not-existent".parse().unwrap())
+                .await;
+
+            assert!(matches!(program, Err(AppError::NotFound)));
+        }
+    }
+
+    mod add {
+        use super::*;
+        use chrono::{Duration, Utc};
+
+        #[sqlx::test]
+        async fn add(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+
+            let program = repo.create(program_1().content).await.unwrap();
+            assert!(program.created_date_time < Utc::now() + Duration::minutes(10));
+            assert!(program.created_date_time > Utc::now() - Duration::minutes(10));
+            assert!(program.modification_date_time < Utc::now() + Duration::minutes(10));
+            assert!(program.modification_date_time > Utc::now() - Duration::minutes(10));
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn add_existing_name(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+
+            let program = repo.create(program_1().content).await;
+            assert!(matches!(program, Err(AppError::Conflict(_, _))));
+        }
+    }
+
+    mod modify {
+        use super::*;
+        use chrono::{DateTime, Duration, Utc};
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn updates_modify_time(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+            let program = repo
+                .update(&"program-1".parse().unwrap(), program_1().content)
+                .await
+                .unwrap();
+
+            assert_eq!(program.content, program_1().content);
+            assert_eq!(
+                program.created_date_time,
+                "2024-07-25 08:31:10.776000 +00:00"
+                    .parse::<DateTime<Utc>>()
+                    .unwrap()
+            );
+            assert!(program.modification_date_time < Utc::now() + Duration::minutes(10));
+            assert!(program.modification_date_time > Utc::now() - Duration::minutes(10));
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn update(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+            let mut updated = program_2().content;
+            updated.program_name = "updated_name".parse().unwrap();
+
+            let program = repo
+                .update(&"program-1".parse().unwrap(), updated.clone())
+                .await
+                .unwrap();
+
+            assert_eq!(program.content, updated);
+            let program = repo.retrieve(&"program-1".parse().unwrap()).await.unwrap();
+            assert_eq!(program.content, updated);
+        }
+    }
+
+    mod delete {
+        use super::*;
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn delete_existing(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+            let program = repo.delete(&"program-1".parse().unwrap()).await.unwrap();
+            assert_eq!(program, program_1());
+
+            let program = repo.retrieve(&"program-1".parse().unwrap()).await;
+            assert!(matches!(program, Err(AppError::NotFound)));
+
+            let program = repo.retrieve(&"program-2".parse().unwrap()).await.unwrap();
+            assert_eq!(program, program_2());
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn delete_not_existing(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+            let program = repo.delete(&"program-not-existing".parse().unwrap()).await;
+            assert!(matches!(program, Err(AppError::NotFound)));
+        }
+    }
+}
