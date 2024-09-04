@@ -27,15 +27,19 @@ VALUES ('program-1',
         '{
           "start": "2024-07-25T08:31:10.776Z"
         }',
-        '[{
-          "URL": "https://program-description-1.com"
-        }]',
+        '[
+          {
+            "URL": "https://program-description-1.com"
+          }
+        ]',
         false,
         true,
-        '[{
-          "objectType": "EVENT_PAYLOAD_DESCRIPTOR",
-          "payloadType": "EXPORT_PRICE"
-        }]',
+        '[
+          {
+            "objectType": "EVENT_PAYLOAD_DESCRIPTOR",
+            "payloadType": "EXPORT_PRICE"
+          }
+        ]',
         '[
           {
             "type": "GROUP",

@@ -1,8 +1,8 @@
 use crate::api::program::QueryParams;
-use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
+use crate::data_source::postgres::{to_json_value, PgPermissionFilter, PgTargetsFilter};
 use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
-use crate::jwt::{BusinessIds, Claims};
+use crate::jwt::Claims;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::program::{ProgramContent, ProgramId};
@@ -129,26 +129,6 @@ struct PostgresFilter<'a> {
     limit: i64,
 }
 
-#[derive(Debug)]
-struct PgPermissionFilter {
-    business_ids: Option<Vec<String>>,
-    ven_ids: Vec<String>,
-}
-
-impl From<&Claims> for PgPermissionFilter {
-    fn from(claims: &Claims) -> Self {
-        let business_ids = match claims.business_ids() {
-            BusinessIds::Specific(v) => Some(v),
-            BusinessIds::Any => None,
-        };
-
-        Self {
-            business_ids,
-            ven_ids: claims.ven_ids(),
-        }
-    }
-}
-
 impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
     fn from(query: &'a QueryParams) -> Self {
         let mut filter = Self {
@@ -166,7 +146,7 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
                         .iter()
                         .map(|value| PgTargetsFilter {
                             label: label.as_str(),
-                            value: [value.as_str()],
+                            value: [value.clone()],
                         })
                         .collect()
                 }
@@ -230,15 +210,13 @@ impl Crud for PgProgramStorage {
             PostgresProgram,
             r#"
             SELECT *
-            FROM program p
+            FROM program
             WHERE id = $1
-              AND (
-                ((jsonb_path_query_array(p.targets, '$[*].type') ? 'VEN_NAME')
-                    AND ($2::text[] IS NULL OR jsonb_path_query_array(p.targets, '$[*].values[*]') ?| ($2)))
-                    OR jsonb_path_query_array(p.targets, '$[*].type') ? 'VEN_NAME') IS NOT TRUE
+              AND (targets IS NULL OR $2::jsonb <@ targets) -- Filter for VEN ids
             "#,
             id.as_str(),
-            permission_filter.ven_ids.as_slice()
+            serde_json::to_value(permission_filter.ven_ids)
+                .map_err(AppError::SerdeJsonInternalServerError)?
         )
         .fetch_one(&self.db)
         .await?
@@ -248,10 +226,13 @@ impl Crud for PgProgramStorage {
     async fn retrieve_all(
         &self,
         filter: &Self::Filter,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Vec<Self::Type>, Self::Error> {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
+
+        let permission_filter: PgPermissionFilter = user.into();
+        trace!(?permission_filter);
 
         Ok(sqlx::query_as!(
             PostgresProgram,
@@ -274,16 +255,17 @@ impl Crud for PgProgramStorage {
                    p.targets
             FROM program p
               LEFT JOIN event e on p.id = e.program_id
-            WHERE ($1::text[] IS NULL OR TRUE) -- TODO implement filtering based on VEN names
-              AND ($2::text[] IS NULL OR e.event_name = ANY($2))
-              AND ($3::text[] IS NULL OR p.program_name = ANY($3))
-              AND ($4::jsonb = '[]'::jsonb OR $4::jsonb <@ p.targets)
+            WHERE ($1::text[] IS NULL OR e.event_name = ANY($1))
+              AND ($2::text[] IS NULL OR p.program_name = ANY($2))
+              AND ($3::jsonb = '[]'::jsonb OR $3::jsonb <@ p.targets)
+              AND (p.targets IS NULL OR $4::jsonb <@ p.targets) -- Filter for VEN ids
             OFFSET $5 LIMIT $6
             "#,
-            pg_filter.ven_names,
             pg_filter.event_names,
             pg_filter.program_names,
             serde_json::to_value(pg_filter.targets)
+                .map_err(AppError::SerdeJsonInternalServerError)?,
+            serde_json::to_value(permission_filter.ven_ids)
                 .map_err(AppError::SerdeJsonInternalServerError)?,
             pg_filter.skip,
             pg_filter.limit,

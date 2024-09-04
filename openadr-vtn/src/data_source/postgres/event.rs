@@ -1,5 +1,5 @@
 use crate::api::event::QueryParams;
-use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
+use crate::data_source::postgres::{to_json_value, PgPermissionFilter, PgTargetsFilter};
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
 use crate::jwt::Claims;
@@ -10,7 +10,7 @@ use openadr_wire::target::TargetLabel;
 use openadr_wire::Event;
 use sqlx::PgPool;
 use std::str::FromStr;
-use tracing::error;
+use tracing::{error, trace};
 
 #[async_trait]
 impl EventCrud for PgEventStorage {}
@@ -142,7 +142,7 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
                         .iter()
                         .map(|value| PgTargetsFilter {
                             label: label.as_str(),
-                            value: [value.as_str()],
+                            value: [value.clone()],
                         })
                         .collect()
                 }
@@ -193,14 +193,24 @@ impl Crud for PgEventStorage {
     async fn retrieve(
         &self,
         id: &Self::Id,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let permission_filter: PgPermissionFilter = user.into();
+        trace!(?permission_filter);
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
-            SELECT * FROM event WHERE id = $1
+            SELECT e.*
+            FROM event e
+                JOIN program p ON e.program_id = p.id
+            WHERE e.id = $1
+              AND (p.targets IS NULL OR $2::jsonb <@ p.targets) -- Filter for VEN ids
+              AND (e.targets IS NULL OR $2::jsonb <@ e.targets) -- Filter for VEN ids
             "#,
-            id.as_str()
+            id.as_str(),
+            serde_json::to_value(permission_filter.ven_ids)
+                .map_err(AppError::SerdeJsonInternalServerError)?
         )
         .fetch_one(&self.db)
         .await?
@@ -210,9 +220,13 @@ impl Crud for PgEventStorage {
     async fn retrieve_all(
         &self,
         filter: &Self::Filter,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Vec<Self::Type>, Self::Error> {
         let pg_filter: PostgresFilter = filter.into();
+        trace!(?pg_filter);
+
+        let permission_filter: PgPermissionFilter = user.into();
+        trace!(?permission_filter);
 
         Ok(sqlx::query_as!(
             PostgresEvent,
@@ -221,17 +235,19 @@ impl Crud for PgEventStorage {
             FROM event e
               JOIN program p on p.id = e.program_id
             WHERE ($1::text IS NULL OR program_id like $1)
-              AND ($2::text[] IS NULL OR TRUE) -- TODO filter for ven_names
-              AND ($3::text[] IS NULL OR event_name = ANY($3))
-              AND ($4::text[] IS NULL OR p.program_name = ANY($4))
-              AND ($5::jsonb = '[]'::jsonb OR $5::jsonb <@ e.targets)
+              AND ($2::text[] IS NULL OR event_name = ANY($2))
+              AND ($3::text[] IS NULL OR p.program_name = ANY($3))
+              AND ($4::jsonb = '[]'::jsonb OR $4::jsonb <@ e.targets)
+              AND (p.targets IS NULL OR $5::jsonb <@ p.targets) -- Filter for VEN ids
+              AND (e.targets IS NULL OR $5::jsonb <@ e.targets) -- Filter for VEN ids
             OFFSET $6 LIMIT $7
             "#,
             pg_filter.program_id,
-            pg_filter.ven_names,
             pg_filter.event_names,
             pg_filter.program_names,
             serde_json::to_value(pg_filter.targets)
+                .map_err(AppError::SerdeJsonInternalServerError)?,
+            serde_json::to_value(permission_filter.ven_ids)
                 .map_err(AppError::SerdeJsonInternalServerError)?,
             pg_filter.skip,
             pg_filter.limit
