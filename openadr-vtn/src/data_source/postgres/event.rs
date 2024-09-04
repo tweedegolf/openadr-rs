@@ -1,5 +1,5 @@
 use crate::api::event::QueryParams;
-use crate::data_source::postgres::to_json_value;
+use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
 use crate::jwt::Claims;
@@ -118,8 +118,7 @@ struct PostgresFilter<'a> {
     program_names: Option<&'a [String]>,
     // TODO check whether we also need to extract `PowerServiceLocation`, `ServiceArea`,
     //  `ResourceNames`, and `Group`, i.e., only leave the `Private`
-    target_type: Option<&'a str>,
-    target_values: Option<&'a [String]>,
+    targets: Vec<PgTargetsFilter<'a>>,
 
     skip: i64,
     limit: i64,
@@ -137,9 +136,16 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
             Some(TargetLabel::VENName) => filter.ven_names = query.target_values.as_deref(),
             Some(TargetLabel::EventName) => filter.event_names = query.target_values.as_deref(),
             Some(TargetLabel::ProgramName) => filter.program_names = query.target_values.as_deref(),
-            Some(_) => {
-                filter.target_type = query.target_type.as_ref().map(|t| t.as_str());
-                filter.target_values = query.target_values.as_deref()
+            Some(ref label) => {
+                if let Some(values) = query.target_values.as_ref() {
+                    filter.targets = values
+                        .iter()
+                        .map(|value| PgTargetsFilter {
+                            label: label.as_str(),
+                            value: [value.as_str()],
+                        })
+                        .collect()
+                }
             }
             None => {}
         };
@@ -218,24 +224,23 @@ impl Crud for PgEventStorage {
               AND ($2::text[] IS NULL OR TRUE) -- TODO filter for ven_names
               AND ($3::text[] IS NULL OR event_name = ANY($3))
               AND ($4::text[] IS NULL OR p.program_name = ANY($4))
-              AND ($5::text IS NULL OR jsonb_path_query_array(e.targets, '$[*].type') ? $5)
-              AND ($6::text[] IS NULL OR jsonb_path_query_array(e.targets, '$[*].values[*]') ?| ($6))
-            OFFSET $7 LIMIT $8
+              AND ($5::jsonb = '[]'::jsonb OR $5::jsonb <@ e.targets)
+            OFFSET $6 LIMIT $7
             "#,
             pg_filter.program_id,
             pg_filter.ven_names,
             pg_filter.event_names,
             pg_filter.program_names,
-            pg_filter.target_type,
-            pg_filter.target_values,
+            serde_json::to_value(pg_filter.targets)
+                .map_err(AppError::SerdeJsonInternalServerError)?,
             pg_filter.skip,
             pg_filter.limit
         )
-            .fetch_all(&self.db)
-            .await?
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?)
+        .fetch_all(&self.db)
+        .await?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<_, _>>()?)
     }
 
     async fn update(
@@ -332,10 +337,16 @@ mod tests {
                 program_id: "program-1".parse().unwrap(),
                 event_name: Some("event-1-name".to_string()),
                 priority: Some(4).into(),
-                targets: Some(TargetMap(vec![TargetEntry {
-                    label: TargetLabel::Group,
-                    values: ["group-1".to_string()],
-                }])),
+                targets: Some(TargetMap(vec![
+                    TargetEntry {
+                        label: TargetLabel::Group,
+                        values: ["group-1".to_string()],
+                    },
+                    TargetEntry {
+                        label: TargetLabel::Private("PRIVATE_LABEL".to_string()),
+                        values: ["private value".to_string()],
+                    },
+                ])),
                 report_descriptors: None,
                 payload_descriptors: None,
                 interval_period: Some(IntervalPeriod {
@@ -511,6 +522,24 @@ mod tests {
                     &QueryParams {
                         target_type: Some(TargetLabel::Group),
                         target_values: Some(vec!["target-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(events.len(), 0);
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn filter_multiple_targets(db: PgPool) {
+            let repo: PgEventStorage = db.into();
+
+            let events = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["private value".to_string()]),
                         ..Default::default()
                     },
                     &Claims::any_business_user(),

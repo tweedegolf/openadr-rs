@@ -72,6 +72,10 @@ impl TryFrom<PostgresReport> for Report {
     }
 }
 
+struct PgId {
+    id: String,
+}
+
 #[async_trait]
 impl Crud for PgReportStorage {
     type Type = Report;
@@ -86,6 +90,22 @@ impl Crud for PgReportStorage {
         new: Self::NewType,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let PgId { id } = sqlx::query_as!(
+            PgId,
+            r#"
+            SELECT program_id AS id FROM event WHERE id = $1
+            "#,
+            new.event_id.as_str(),
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        if id != new.program_id.as_str() {
+            return Err(AppError::BadRequest(
+                "event_id and program_id have to point to the same program",
+            ));
+        }
+
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"

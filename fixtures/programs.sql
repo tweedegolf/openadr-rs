@@ -42,6 +42,12 @@ VALUES ('program-1',
             "values": [
               "group-1"
             ]
+          },
+          {
+            "type": "PRIVATE_LABEL",
+            "values": [
+              "private value"
+            ]
           }
         ]'),
        ('program-2',

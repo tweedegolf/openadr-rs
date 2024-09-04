@@ -1,8 +1,8 @@
 use crate::api::program::QueryParams;
-use crate::data_source::postgres::to_json_value;
+use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
 use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
-use crate::jwt::{BusinessIds, Claims, User};
+use crate::jwt::{BusinessIds, Claims};
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::program::{ProgramContent, ProgramId};
@@ -123,8 +123,7 @@ struct PostgresFilter<'a> {
     program_names: Option<&'a [String]>,
     // TODO check whether we also need to extract `PowerServiceLocation`, `ServiceArea`,
     //  `ResourceNames`, and `Group`, i.e., only leave the `Private`
-    target_type: Option<&'a str>,
-    target_values: Option<&'a [String]>,
+    targets: Vec<PgTargetsFilter<'a>>,
 
     skip: i64,
     limit: i64,
@@ -133,16 +132,20 @@ struct PostgresFilter<'a> {
 #[derive(Debug)]
 struct PgPermissionFilter {
     business_ids: Option<Vec<String>>,
+    ven_ids: Vec<String>,
 }
 
-impl From<&User> for PgPermissionFilter {
-    fn from(User(ref claims): &User) -> Self {
+impl From<&Claims> for PgPermissionFilter {
+    fn from(claims: &Claims) -> Self {
         let business_ids = match claims.business_ids() {
             BusinessIds::Specific(v) => Some(v),
             BusinessIds::Any => None,
         };
 
-        Self { business_ids }
+        Self {
+            business_ids,
+            ven_ids: claims.ven_ids(),
+        }
     }
 }
 
@@ -157,9 +160,16 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
             Some(TargetLabel::VENName) => filter.ven_names = query.target_values.as_deref(),
             Some(TargetLabel::EventName) => filter.event_names = query.target_values.as_deref(),
             Some(TargetLabel::ProgramName) => filter.program_names = query.target_values.as_deref(),
-            Some(_) => {
-                filter.target_type = query.target_type.as_ref().map(|t| t.as_str());
-                filter.target_values = query.target_values.as_deref()
+            Some(ref label) => {
+                if let Some(values) = query.target_values.as_ref() {
+                    filter.targets = values
+                        .iter()
+                        .map(|value| PgTargetsFilter {
+                            label: label.as_str(),
+                            value: [value.as_str()],
+                        })
+                        .collect()
+                }
             }
             None => {}
         };
@@ -211,14 +221,24 @@ impl Crud for PgProgramStorage {
     async fn retrieve(
         &self,
         id: &Self::Id,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let permission_filter: PgPermissionFilter = user.into();
+        trace!(?permission_filter);
+
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
-            SELECT * FROM program WHERE id = $1
+            SELECT *
+            FROM program p
+            WHERE id = $1
+              AND (
+                ((jsonb_path_query_array(p.targets, '$[*].type') ? 'VEN_NAME')
+                    AND ($2::text[] IS NULL OR jsonb_path_query_array(p.targets, '$[*].values[*]') ?| ($2)))
+                    OR jsonb_path_query_array(p.targets, '$[*].type') ? 'VEN_NAME') IS NOT TRUE
             "#,
-            id.as_str()
+            id.as_str(),
+            permission_filter.ven_ids.as_slice()
         )
         .fetch_one(&self.db)
         .await?
@@ -257,15 +277,14 @@ impl Crud for PgProgramStorage {
             WHERE ($1::text[] IS NULL OR TRUE) -- TODO implement filtering based on VEN names
               AND ($2::text[] IS NULL OR e.event_name = ANY($2))
               AND ($3::text[] IS NULL OR p.program_name = ANY($3))
-              AND ($4::text IS NULL OR jsonb_path_query_array(p.targets, '$[*].type') ? $4)
-              AND ($5::text[] IS NULL OR jsonb_path_query_array(p.targets, '$[*].values[*]') ?| ($5))
-            OFFSET $6 LIMIT $7
+              AND ($4::jsonb = '[]'::jsonb OR $4::jsonb <@ p.targets)
+            OFFSET $5 LIMIT $6
             "#,
             pg_filter.ven_names,
             pg_filter.event_names,
             pg_filter.program_names,
-            pg_filter.target_type,
-            pg_filter.target_values,
+            serde_json::to_value(pg_filter.targets)
+                .map_err(AppError::SerdeJsonInternalServerError)?,
             pg_filter.skip,
             pg_filter.limit,
         )
@@ -393,10 +412,16 @@ mod tests {
                 payload_descriptors: Some(vec![PayloadDescriptor::EventPayloadDescriptor(
                     EventPayloadDescriptor::new(EventType::ExportPrice),
                 )]),
-                targets: Some(TargetMap(vec![TargetEntry {
-                    label: TargetLabel::Group,
-                    values: ["group-1".to_string()],
-                }])),
+                targets: Some(TargetMap(vec![
+                    TargetEntry {
+                        label: TargetLabel::Group,
+                        values: ["group-1".to_string()],
+                    },
+                    TargetEntry {
+                        label: TargetLabel::Private("PRIVATE_LABEL".to_string()),
+                        values: ["private value".to_string()],
+                    },
+                ])),
             },
         }
     }
@@ -534,6 +559,24 @@ mod tests {
                     &QueryParams {
                         target_type: Some(TargetLabel::ProgramName),
                         target_values: Some(vec!["program-not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 0);
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn filter_multiple_targets(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+
+            let programs = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["private value".to_string()]),
                         ..Default::default()
                     },
                     &Claims::any_business_user(),

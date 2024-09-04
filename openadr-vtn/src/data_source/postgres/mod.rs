@@ -73,3 +73,11 @@ fn to_json_value<T: Serialize>(v: Option<T>) -> Result<Option<serde_json::Value>
     v.map(|v| serde_json::to_value(v).map_err(AppError::SerdeJsonBadRequest))
         .transpose()
 }
+
+#[derive(Serialize, Debug)]
+struct PgTargetsFilter<'a> {
+    #[serde(rename = "type")]
+    label: &'a str,
+    #[serde(rename = "values")]
+    value: [&'a str; 1],
+}
