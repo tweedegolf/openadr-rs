@@ -76,13 +76,13 @@ create table "user"
 
 create table user_roles
 (
-    user_id text  not null references "user" (id),
+    user_id text  not null references "user" (id) on delete cascade,
     role    jsonb not null
 );
 
 create table user_credentials
 (
-    user_id       text not null references "user" (id),
+    user_id       text not null references "user" (id) on delete cascade,
     client_id     text not null
         constraint user_credentials_pk
             primary key,
