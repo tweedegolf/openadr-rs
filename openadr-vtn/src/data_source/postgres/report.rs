@@ -1,5 +1,5 @@
 use crate::api::report::QueryParams;
-use crate::data_source::postgres::{to_json_value, PgId};
+use crate::data_source::postgres::{extract_business_ids, to_json_value, PgId};
 use crate::data_source::{Crud, ReportCrud};
 use crate::error::AppError;
 use crate::jwt::Claims;
@@ -84,9 +84,30 @@ impl Crud for PgReportStorage {
     async fn create(
         &self,
         new: Self::NewType,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
-        let PgId { id } = sqlx::query_as!(
+        let permitted_vens = sqlx::query_as!(
+            PgId,
+            r#"
+            SELECT ven_id AS id FROM ven_program WHERE program_id = $1
+            "#,
+            new.program_id.as_str()
+        )
+        .fetch_all(&self.db)
+        .await?
+        .into_iter()
+        .map(|id| id.id)
+        .collect::<Vec<_>>();
+
+        if !user
+            .ven_ids()
+            .into_iter()
+            .any(|user_ven| permitted_vens.contains(&user_ven))
+        {
+            Err(AppError::NotFound)?
+        };
+
+        let program_id = sqlx::query_as!(
             PgId,
             r#"
             SELECT program_id AS id FROM event WHERE id = $1
@@ -96,7 +117,7 @@ impl Crud for PgReportStorage {
         .fetch_one(&self.db)
         .await?;
 
-        if id != new.program_id.as_str() {
+        if program_id.id != new.program_id.as_str() {
             return Err(AppError::BadRequest(
                 "event_id and program_id have to point to the same program",
             ));
@@ -124,14 +145,25 @@ impl Crud for PgReportStorage {
     async fn retrieve(
         &self,
         id: &Self::Id,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let business_ids = extract_business_ids(user);
+
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"
-            SELECT * FROM report WHERE id = $1
+            SELECT r.* 
+            FROM report r 
+                JOIN program p ON p.id = r.program_id 
+                LEFT JOIN ven_program v ON v.program_id = r.program_id
+            WHERE r.id = $1 
+              AND (NOT $2 OR v.ven_id IS NULL OR v.ven_id = ANY($3)) 
+              AND ($4::text[] IS NULL OR p.business_id = ANY($4))
             "#,
-            id.as_str()
+            id.as_str(),
+            user.is_ven(),
+            &user.ven_ids(),
+            business_ids.as_deref()
         )
         .fetch_one(&self.db)
         .await?
@@ -141,20 +173,30 @@ impl Crud for PgReportStorage {
     async fn retrieve_all(
         &self,
         filter: &Self::Filter,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Vec<Self::Type>, Self::Error> {
+        let business_ids = extract_business_ids(user);
+
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"
-            SELECT * FROM report
-            WHERE ($1::text IS NULL OR $1 like program_id)
-              AND ($2::text IS NULL OR $2 like event_id)
-              AND ($3::text IS NULL OR $3 like client_name)
-            LIMIT $4 OFFSET $5
+            SELECT r.*
+            FROM report r
+                JOIN program p ON p.id = r.program_id
+                LEFT JOIN ven_program v ON v.program_id = r.program_id
+            WHERE ($1::text IS NULL OR $1 like r.program_id)
+              AND ($2::text IS NULL OR $2 like r.event_id)
+              AND ($3::text IS NULL OR $3 like r.client_name)
+              AND (NOT $4 OR v.ven_id IS NULL OR v.ven_id = ANY($5)) 
+              AND ($6::text[] IS NULL OR p.business_id = ANY($6))
+            LIMIT $7 OFFSET $8
             "#,
             filter.program_id.clone().map(|x| x.to_string()),
             filter.event_id.clone().map(|x| x.to_string()),
             filter.client_name,
+            user.is_ven(),
+            &user.ven_ids(),
+            business_ids.as_deref(),
             filter.skip,
             filter.limit,
         )
@@ -169,23 +211,32 @@ impl Crud for PgReportStorage {
         &self,
         id: &Self::Id,
         new: Self::NewType,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let business_ids = extract_business_ids(user);
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"
-            UPDATE report
+            UPDATE report r
             SET modification_date_time = now(),
-                program_id = $2,
-                event_id = $3,
-                client_name = $4,
-                report_name = $5,
-                payload_descriptors = $6,
-                resources = $7
-            WHERE id = $1
-            RETURNING *
+                program_id = $5,
+                event_id = $6,
+                client_name = $7,
+                report_name = $8,
+                payload_descriptors = $9,
+                resources = $10
+            FROM program p
+                LEFT JOIN ven_program v ON p.id = v.program_id
+            WHERE r.id = $1
+              AND (p.id = r.program_id)
+              AND (NOT $2 OR v.ven_id IS NULL OR v.ven_id = ANY($3)) 
+              AND ($4::text[] IS NULL OR p.business_id = ANY($4))
+            RETURNING r.*
             "#,
             id.as_str(),
+            user.is_ven(),
+            &user.ven_ids(),
+            business_ids.as_deref(),
             new.program_id.as_str(),
             new.event_id.as_str(),
             new.client_name,
@@ -201,14 +252,22 @@ impl Crud for PgReportStorage {
     async fn delete(
         &self,
         id: &Self::Id,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let business_ids = extract_business_ids(user);
+
         Ok(sqlx::query_as!(
             PostgresReport,
             r#"
-            DELETE FROM report WHERE id = $1 RETURNING *
+            DELETE FROM report r 
+                   USING program p 
+                   WHERE r.id = $1 
+                     AND r.program_id = p.id 
+                     AND ($2::text[] IS NULL OR p.business_id = ANY($2))
+                   RETURNING r.*
             "#,
-            id.as_str()
+            id.as_str(),
+            business_ids.as_deref(),
         )
         .fetch_one(&self.db)
         .await?
