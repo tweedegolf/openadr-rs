@@ -6,7 +6,7 @@ use crate::jwt::Claims;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::program::{ProgramContent, ProgramId};
-use openadr_wire::target::TargetLabel;
+use openadr_wire::target::{TargetLabel, TargetMap};
 use openadr_wire::Program;
 use sqlx::PgPool;
 use tracing::{error, trace};
@@ -158,6 +158,32 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
     }
 }
 
+#[tracing::instrument(level = "trace")]
+fn extract_vens(targets: Option<TargetMap>) -> (Option<TargetMap>, Option<Vec<String>>) {
+    if let Some(TargetMap(targets)) = targets {
+        let (vens, targets): (Vec<_>, Vec<_>) = targets
+            .into_iter()
+            .partition(|t| t.label == TargetLabel::VENName);
+
+        let vens = vens
+            .into_iter()
+            .map(|t| t.values[0].clone())
+            .collect::<Vec<_>>();
+
+        let targets = if targets.is_empty() {
+            None
+        } else {
+            Some(TargetMap(targets))
+        };
+        let vens = if vens.is_empty() { None } else { Some(vens) };
+
+        trace!(?targets, ?vens);
+        (targets, vens)
+    } else {
+        (None, None)
+    }
+}
+
 #[async_trait]
 impl Crud for PgProgramStorage {
     type Type = Program;
@@ -172,7 +198,10 @@ impl Crud for PgProgramStorage {
         new: Self::NewType,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
-        Ok(sqlx::query_as!(
+        let (targets, vens) = extract_vens(new.targets);
+        let mut tx = self.db.begin().await?;
+
+        let program: Program = sqlx::query_as!(
             PostgresProgram,
             r#"
             INSERT INTO program (id, created_date_time, modification_date_time, program_name, program_long_name, retailer_name, retailer_long_name, program_type, country, principal_subdivision, interval_period, program_descriptions, binding_events, local_price, payload_descriptors, targets)
@@ -191,11 +220,32 @@ impl Crud for PgProgramStorage {
             new.binding_events,
             new.local_price,
             to_json_value(new.payload_descriptors)?,
-            to_json_value(new.targets)?,
+            to_json_value(targets)?,
         )
-            .fetch_one(&self.db)
+            .fetch_one(&mut *tx)
             .await?
-            .try_into()?)
+            .try_into()?;
+
+        if let Some(vens) = vens {
+            let rows_affected = sqlx::query!(
+                r#"
+                INSERT INTO ven_program (program_id, ven_id)
+                    (SELECT $1, id FROM ven WHERE ven_name = ANY ($2))
+                "#,
+                program.id.as_str(),
+                &vens
+            )
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            if rows_affected as usize != vens.len() {
+                Err(AppError::BadRequest(
+                    "One or multiple VEN names linked in the program do not exist",
+                ))?
+            }
+        };
+        tx.commit().await?;
+        Ok(program)
     }
 
     async fn retrieve(
@@ -283,7 +333,10 @@ impl Crud for PgProgramStorage {
         new: Self::NewType,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
-        Ok(sqlx::query_as!(
+        let (targets, vens) = extract_vens(new.targets);
+        let mut tx = self.db.begin().await?;
+
+        let program: Program = sqlx::query_as!(
             PostgresProgram,
             r#"
             UPDATE program
@@ -317,11 +370,41 @@ impl Crud for PgProgramStorage {
             new.binding_events,
             new.local_price,
             to_json_value(new.payload_descriptors)?,
-            to_json_value(new.targets)?,
+            to_json_value(targets)?,
         )
-        .fetch_one(&self.db)
+        .fetch_one(&mut *tx)
         .await?
-        .try_into()?)
+        .try_into()?;
+
+        if let Some(vens) = vens {
+            sqlx::query!(
+                r#"
+                DELETE FROM ven_program WHERE program_id = $1
+                "#,
+                program.id.as_str()
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            let rows_affected = sqlx::query!(
+                r#"
+                INSERT INTO ven_program (program_id, ven_id)
+                    (SELECT $1, id FROM ven WHERE ven_name = ANY($2))
+                "#,
+                program.id.as_str(),
+                &vens
+            )
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            if rows_affected as usize != vens.len() {
+                Err(AppError::BadRequest(
+                    "One or multiple VEN names linked in the program do not exist",
+                ))?
+            }
+        };
+        tx.commit().await?;
+        Ok(program)
     }
 
     async fn delete(
