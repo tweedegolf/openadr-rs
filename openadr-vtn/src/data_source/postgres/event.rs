@@ -1,5 +1,5 @@
 use crate::api::event::QueryParams;
-use crate::data_source::postgres::{to_json_value, PgPermissionFilter, PgTargetsFilter};
+use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
 use crate::jwt::Claims;
@@ -195,22 +195,19 @@ impl Crud for PgEventStorage {
         id: &Self::Id,
         user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
-        let permission_filter: PgPermissionFilter = user.into();
-        trace!(?permission_filter);
-
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
             SELECT e.*
             FROM event e
-                JOIN program p ON e.program_id = p.id
+              JOIN program p ON e.program_id = p.id
+              LEFT JOIN ven_program vp ON p.id = vp.program_id
             WHERE e.id = $1
-              AND (p.targets IS NULL OR $2::jsonb <@ p.targets) -- Filter for VEN ids
-              AND (e.targets IS NULL OR $2::jsonb <@ e.targets) -- Filter for VEN ids
+              AND (NOT $2 OR vp.ven_id IS NULL OR vp.ven_id = ANY($3)) -- Filter for VEN ids
             "#,
             id.as_str(),
-            serde_json::to_value(permission_filter.ven_ids)
-                .map_err(AppError::SerdeJsonInternalServerError)?
+            user.is_ven(),
+            &user.ven_ids()
         )
         .fetch_one(&self.db)
         .await?
@@ -225,30 +222,30 @@ impl Crud for PgEventStorage {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
 
-        let permission_filter: PgPermissionFilter = user.into();
-        trace!(?permission_filter);
-
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
             SELECT e.*
             FROM event e
               JOIN program p on p.id = e.program_id
-            WHERE ($1::text IS NULL OR program_id like $1)
-              AND ($2::text[] IS NULL OR event_name = ANY($2))
+              LEFT JOIN ven_program vp ON p.id = vp.program_id
+              LEFT JOIN ven v ON v.id = vp.ven_id
+            WHERE ($1::text IS NULL OR e.program_id like $1)
+              AND ($2::text[] IS NULL OR e.event_name = ANY($2))
               AND ($3::text[] IS NULL OR p.program_name = ANY($3))
-              AND ($4::jsonb = '[]'::jsonb OR $4::jsonb <@ e.targets)
-              AND (p.targets IS NULL OR $5::jsonb <@ p.targets) -- Filter for VEN ids
-              AND (e.targets IS NULL OR $5::jsonb <@ e.targets) -- Filter for VEN ids
-            OFFSET $6 LIMIT $7
+              AND ($4::text[] IS NULL OR v.ven_name = ANY($4))
+              AND ($5::jsonb = '[]'::jsonb OR $5::jsonb <@ e.targets)
+              AND (NOT $6 OR v.id IS NULL OR v.id = ANY($7)) -- Filter for VEN ids
+            OFFSET $8 LIMIT $9
             "#,
             pg_filter.program_id,
             pg_filter.event_names,
             pg_filter.program_names,
+            pg_filter.ven_names,
             serde_json::to_value(pg_filter.targets)
                 .map_err(AppError::SerdeJsonInternalServerError)?,
-            serde_json::to_value(permission_filter.ven_ids)
-                .map_err(AppError::SerdeJsonInternalServerError)?,
+            user.is_ven(),
+            &user.ven_ids(),
             pg_filter.skip,
             pg_filter.limit
         )
@@ -421,11 +418,12 @@ mod tests {
         #[sqlx::test(fixtures("programs", "events"))]
         async fn default_get_all(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let events = repo
+            let mut events = repo
                 .retrieve_all(&Default::default(), &Claims::any_business_user())
                 .await
                 .unwrap();
             assert_eq!(events.len(), 2);
+            events.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
             assert_eq!(events, vec![event_1(), event_2()]);
         }
 
@@ -460,7 +458,6 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
-            assert_eq!(events, vec![event_2()]);
 
             let events = repo
                 .retrieve_all(

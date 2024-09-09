@@ -18,8 +18,10 @@ pub mod oauth;
 pub mod problem;
 pub mod program;
 pub mod report;
+pub mod resource;
 pub mod target;
 pub mod values_map;
+pub mod ven;
 
 mod serde_rfc3339 {
     use super::*;

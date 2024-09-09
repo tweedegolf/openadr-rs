@@ -1,26 +1,26 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT * FROM program WHERE id = $1\n            ",
+  "query": "\n            SELECT p.id AS \"id!\", \n                   p.created_date_time AS \"created_date_time!\", \n                   p.modification_date_time AS \"modification_date_time!\",\n                   p.program_name AS \"program_name!\",\n                   p.program_long_name,\n                   p.retailer_name,\n                   p.retailer_long_name,\n                   p.program_type,\n                   p.country,\n                   p.principal_subdivision,\n                   p.interval_period,\n                   p.program_descriptions,\n                   p.binding_events,\n                   p.local_price,\n                   p.payload_descriptors,\n                   p.targets\n            FROM program p\n              LEFT JOIN event e ON p.id = e.program_id\n              LEFT JOIN ven_program vp ON p.id = vp.program_id\n              LEFT JOIN ven v ON v.id = vp.ven_id\n            WHERE ($1::text[] IS NULL OR e.event_name = ANY($1))\n              AND ($2::text[] IS NULL OR p.program_name = ANY($2))\n              AND ($3::text[] IS NULL OR v.ven_name = ANY($3))\n              AND ($4::jsonb = '[]'::jsonb OR $4::jsonb <@ p.targets)\n              AND (NOT $5 OR v.id IS NULL OR v.id = ANY($6)) -- Filter for VEN ids\n            GROUP BY p.id\n            OFFSET $7 LIMIT $8\n            ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
+        "name": "id!",
         "type_info": "Text"
       },
       {
         "ordinal": 1,
-        "name": "created_date_time",
+        "name": "created_date_time!",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 2,
-        "name": "modification_date_time",
+        "name": "modification_date_time!",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 3,
-        "name": "program_name",
+        "name": "program_name!",
         "type_info": "Text"
       },
       {
@@ -86,7 +86,14 @@
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Jsonb",
+        "Bool",
+        "TextArray",
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
@@ -108,5 +115,5 @@
       true
     ]
   },
-  "hash": "cd7cdf9377f411e6880ef7fa67242a2761346b07de543ba41f9c7c31afa45651"
+  "hash": "e348b4c7bfbe7e5636c9f6c77de9777827b395c66d2bf8a056163c0070bf382b"
 }

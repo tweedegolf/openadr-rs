@@ -76,7 +76,7 @@ create table "user"
 
 create table user_roles
 (
-    user_id text not null references "user" (id),
+    user_id text  not null references "user" (id),
     role    jsonb not null
 );
 
@@ -88,4 +88,45 @@ create table user_credentials
             primary key,
     client_secret text not null
     -- TODO maybe the credentials require their own role?
-)
+);
+
+create table ven
+(
+    id                     text        not null
+        constraint ven_pk
+            primary key,
+    created_date_time      timestamptz not null,
+    modification_date_time timestamptz not null,
+    ven_name               text        not null,
+    attributes             jsonb,
+    targets                jsonb
+);
+
+create unique index ven_ven_name_uindex
+    on ven (ven_name);
+
+create table ven_user
+(
+    ven_id  text not null references ven (id),
+    user_id text not null references "user" (id)
+);
+
+create table resource
+(
+    id                     text        not null
+        constraint resource_pk
+            primary key,
+    created_date_time      timestamptz not null,
+    modification_date_time timestamptz not null,
+    resource_name          text        not null,
+    ven_id                 text        not null references ven (id), -- TODO is this actually 'NOT NULL'?
+    attributes             jsonb,
+    targets                jsonb
+
+);
+
+create table ven_program
+(
+    program_id text not null references program (id),
+    ven_id     text not null references ven (id)
+);

@@ -4,9 +4,7 @@ use crate::data_source::postgres::report::PgReportStorage;
 use crate::data_source::postgres::user::PgAuthSource;
 use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
 use crate::error::AppError;
-use crate::jwt::Claims;
 use dotenvy::dotenv;
-use openadr_wire::target::TargetLabel;
 use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -82,24 +80,4 @@ struct PgTargetsFilter<'a> {
     label: &'a str,
     #[serde(rename = "values")]
     value: [String; 1],
-}
-
-#[derive(Debug)]
-struct PgPermissionFilter<'a> {
-    ven_ids: Vec<PgTargetsFilter<'a>>,
-}
-
-impl From<&Claims> for PgPermissionFilter<'_> {
-    fn from(claims: &Claims) -> Self {
-        Self {
-            ven_ids: claims
-                .ven_ids()
-                .into_iter()
-                .map(|ven_id| PgTargetsFilter {
-                    label: TargetLabel::VENName.as_str(),
-                    value: [ven_id],
-                })
-                .collect(),
-        }
-    }
 }
