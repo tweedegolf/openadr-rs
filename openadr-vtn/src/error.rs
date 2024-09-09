@@ -23,6 +23,8 @@ pub enum AppError {
     NotFound,
     #[error("Bad request: {0}")]
     BadRequest(&'static str),
+    #[error("Forbidden: {0}")]
+    Forbidden(&'static str),
     #[error("Not implemented {0}")]
     NotImplemented(&'static str),
     #[cfg(feature = "sqlx")]
@@ -131,6 +133,19 @@ impl AppError {
                     r#type: Default::default(),
                     title: Some(StatusCode::BAD_REQUEST.to_string()),
                     status: StatusCode::BAD_REQUEST,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::Forbidden(err) => {
+                trace!(%reference,
+                    "Forbidden: {}",
+                    err
+                );
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::FORBIDDEN.to_string()),
+                    status: StatusCode::FORBIDDEN,
                     detail: Some(err.to_string()),
                     instance: Some(reference.to_string()),
                 }

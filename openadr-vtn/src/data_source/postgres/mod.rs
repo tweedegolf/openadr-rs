@@ -4,11 +4,13 @@ use crate::data_source::postgres::report::PgReportStorage;
 use crate::data_source::postgres::user::PgAuthSource;
 use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
 use crate::error::AppError;
+use crate::jwt::{BusinessIds, Claims};
 use dotenvy::dotenv;
+use openadr_wire::target::{TargetLabel, TargetMap};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 mod event;
 mod program;
@@ -80,4 +82,54 @@ struct PgTargetsFilter<'a> {
     label: &'a str,
     #[serde(rename = "values")]
     value: [String; 1],
+}
+
+#[tracing::instrument(level = "trace")]
+fn extract_vens(targets: Option<TargetMap>) -> (Option<TargetMap>, Option<Vec<String>>) {
+    if let Some(TargetMap(targets)) = targets {
+        let (vens, targets): (Vec<_>, Vec<_>) = targets
+            .into_iter()
+            .partition(|t| t.label == TargetLabel::VENName);
+
+        let vens = vens
+            .into_iter()
+            .map(|t| t.values[0].clone())
+            .collect::<Vec<_>>();
+
+        let targets = if targets.is_empty() {
+            None
+        } else {
+            Some(TargetMap(targets))
+        };
+        let vens = if vens.is_empty() { None } else { Some(vens) };
+
+        trace!(?targets, ?vens);
+        (targets, vens)
+    } else {
+        (None, None)
+    }
+}
+
+fn extract_business_id(user: &Claims) -> Result<Option<String>, AppError> {
+    match user.business_ids() {
+        BusinessIds::Specific(ids) => {
+            if ids.len() == 1 {
+                Ok(Some(ids[0].clone()))
+            } else {
+                Err(AppError::BadRequest("Cannot infer business id from user"))?
+            }
+        }
+        BusinessIds::Any => Ok(None),
+    }
+}
+
+fn extract_business_ids(user: &Claims) -> Option<Vec<String>> {
+    match user.business_ids() {
+        BusinessIds::Specific(ids) => Some(ids),
+        BusinessIds::Any => None,
+    }
+}
+
+struct PgId {
+    id: String,
 }

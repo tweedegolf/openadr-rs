@@ -1,5 +1,5 @@
 use crate::api::report::QueryParams;
-use crate::data_source::postgres::to_json_value;
+use crate::data_source::postgres::{to_json_value, PgId};
 use crate::data_source::{Crud, ReportCrud};
 use crate::error::AppError;
 use crate::jwt::Claims;
@@ -70,10 +70,6 @@ impl TryFrom<PostgresReport> for Report {
             },
         })
     }
-}
-
-struct PgId {
-    id: String,
 }
 
 #[async_trait]

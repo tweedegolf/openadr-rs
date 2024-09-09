@@ -1,5 +1,5 @@
 use crate::api::event::QueryParams;
-use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
+use crate::data_source::postgres::{extract_business_ids, to_json_value, PgId, PgTargetsFilter};
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
 use crate::jwt::Claims;
@@ -154,6 +154,36 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
     }
 }
 
+struct MaybePgId {
+    id: Option<String>,
+}
+
+async fn check_write_permission(
+    program_id: &str,
+    user: &Claims,
+    db: &PgPool,
+) -> Result<(), AppError> {
+    if let Some(business_ids) = extract_business_ids(user) {
+        let MaybePgId { id } = sqlx::query_as!(
+            MaybePgId,
+            r#"
+            SELECT business_id AS id FROM program WHERE id = $1
+            "#,
+            program_id
+        )
+        .fetch_one(db)
+        .await?;
+
+        // If no business is connected, anyone may write
+        if let Some(id) = id {
+            if !business_ids.contains(&id) {
+                Err(AppError::Forbidden("You do not have write permissions for events belonging to a program that belongs to another business logic"))?;
+            }
+        }
+    };
+    Ok(())
+}
+
 #[async_trait]
 impl Crud for PgEventStorage {
     type Type = Event;
@@ -166,8 +196,10 @@ impl Crud for PgEventStorage {
     async fn create(
         &self,
         new: Self::NewType,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        check_write_permission(new.program_id.as_str(), user, &self.db).await?;
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -260,8 +292,23 @@ impl Crud for PgEventStorage {
         &self,
         id: &Self::Id,
         new: Self::NewType,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        check_write_permission(new.program_id.as_str(), user, &self.db).await?;
+
+        let previous_program_id = sqlx::query_as!(
+            PgId,
+            r#"SELECT program_id AS id FROM event WHERE id = $1"#,
+            id.as_str()
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        // make sure, you cannot 'steal' an event from another business
+        if previous_program_id.id != new.program_id.as_str() {
+            check_write_permission(&previous_program_id.id, user, &self.db).await?;
+        }
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -296,8 +343,18 @@ impl Crud for PgEventStorage {
     async fn delete(
         &self,
         id: &Self::Id,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let program_id = sqlx::query_as!(
+            PgId,
+            r#"SELECT program_id AS id FROM event WHERE id = $1"#,
+            id.as_str()
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        check_write_permission(&program_id.id, user, &self.db).await?;
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"

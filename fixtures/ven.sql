@@ -17,7 +17,7 @@ VALUES ('ven-1',
         NULL,
         NULL);
 
-INSERT INTO ven_user (ven_id, user_id)
+INSERT INTO user_ven (ven_id, user_id)
 VALUES ('ven-1', 'user-1');
 
 INSERT INTO ven_program (program_id, ven_id)

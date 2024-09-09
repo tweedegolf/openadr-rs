@@ -15,7 +15,7 @@ use openadr_wire::Report;
 use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
 use crate::data_source::ReportCrud;
 use crate::error::AppError;
-use crate::jwt::{BusinessUser, User};
+use crate::jwt::{BusinessUser, User, VENUser};
 
 pub async fn get_all(
     State(report_source): State<Arc<dyn ReportCrud>>,
@@ -40,7 +40,7 @@ pub async fn get(
 
 pub async fn add(
     State(report_source): State<Arc<dyn ReportCrud>>,
-    User(user): User,
+    VENUser(user): VENUser,
     ValidatedJson(new_report): ValidatedJson<ReportContent>,
 ) -> Result<(StatusCode, Json<Report>), AppError> {
     let report = report_source.create(new_report, &user).await?;
@@ -53,7 +53,7 @@ pub async fn add(
 pub async fn edit(
     State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
-    User(user): User,
+    VENUser(user): VENUser,
     ValidatedJson(content): ValidatedJson<ReportContent>,
 ) -> AppResponse<Report> {
     let report = report_source.update(&id, content, &user).await?;
@@ -65,6 +65,7 @@ pub async fn edit(
 
 pub async fn delete(
     State(report_source): State<Arc<dyn ReportCrud>>,
+    // TODO this contradicts the spec, which says that only VENs have write access
     BusinessUser(user): BusinessUser,
     Path(id): Path<ReportId>,
 ) -> AppResponse<Report> {

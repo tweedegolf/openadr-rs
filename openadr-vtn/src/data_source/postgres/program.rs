@@ -1,12 +1,14 @@
 use crate::api::program::QueryParams;
-use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
+use crate::data_source::postgres::{
+    extract_business_id, extract_vens, to_json_value, PgTargetsFilter,
+};
 use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
 use crate::jwt::Claims;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::program::{ProgramContent, ProgramId};
-use openadr_wire::target::{TargetLabel, TargetMap};
+use openadr_wire::target::TargetLabel;
 use openadr_wire::Program;
 use sqlx::PgPool;
 use tracing::{error, trace};
@@ -158,32 +160,6 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
     }
 }
 
-#[tracing::instrument(level = "trace")]
-fn extract_vens(targets: Option<TargetMap>) -> (Option<TargetMap>, Option<Vec<String>>) {
-    if let Some(TargetMap(targets)) = targets {
-        let (vens, targets): (Vec<_>, Vec<_>) = targets
-            .into_iter()
-            .partition(|t| t.label == TargetLabel::VENName);
-
-        let vens = vens
-            .into_iter()
-            .map(|t| t.values[0].clone())
-            .collect::<Vec<_>>();
-
-        let targets = if targets.is_empty() {
-            None
-        } else {
-            Some(TargetMap(targets))
-        };
-        let vens = if vens.is_empty() { None } else { Some(vens) };
-
-        trace!(?targets, ?vens);
-        (targets, vens)
-    } else {
-        (None, None)
-    }
-}
-
 #[async_trait]
 impl Crud for PgProgramStorage {
     type Type = Program;
@@ -196,17 +172,50 @@ impl Crud for PgProgramStorage {
     async fn create(
         &self,
         new: Self::NewType,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
         let (targets, vens) = extract_vens(new.targets);
+        let business_id = extract_business_id(user)?;
+
         let mut tx = self.db.begin().await?;
 
         let program: Program = sqlx::query_as!(
             PostgresProgram,
             r#"
-            INSERT INTO program (id, created_date_time, modification_date_time, program_name, program_long_name, retailer_name, retailer_long_name, program_type, country, principal_subdivision, interval_period, program_descriptions, binding_events, local_price, payload_descriptors, targets)
-            VALUES (gen_random_uuid(), now(), now(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING *
+            INSERT INTO program (id,
+                                 created_date_time,
+                                 modification_date_time,
+                                 program_name,
+                                 program_long_name,
+                                 retailer_name,
+                                 retailer_long_name,
+                                 program_type,
+                                 country,
+                                 principal_subdivision,
+                                 interval_period,
+                                 program_descriptions,
+                                 binding_events,
+                                 local_price,
+                                 payload_descriptors,
+                                 targets,
+                                 business_id)
+            VALUES (gen_random_uuid(), now(), now(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING id,
+                      created_date_time,
+                      modification_date_time,
+                      program_name,
+                      program_long_name,
+                      retailer_name,
+                      retailer_long_name,
+                      program_type,
+                      country,
+                      principal_subdivision,
+                      interval_period,
+                      program_descriptions,
+                      binding_events,
+                      local_price,
+                      payload_descriptors,
+                      targets
             "#,
             new.program_name,
             new.program_long_name,
@@ -221,6 +230,7 @@ impl Crud for PgProgramStorage {
             new.local_price,
             to_json_value(new.payload_descriptors)?,
             to_json_value(targets)?,
+            business_id,
         )
             .fetch_one(&mut *tx)
             .await?
@@ -239,8 +249,9 @@ impl Crud for PgProgramStorage {
             .await?
             .rows_affected();
             if rows_affected as usize != vens.len() {
-                Err(AppError::BadRequest(
-                    "One or multiple VEN names linked in the program do not exist",
+                Err(AppError::Conflict(
+                    "One or multiple VEN names linked in the program do not exist".to_string(),
+                    None,
                 ))?
             }
         };
@@ -256,7 +267,22 @@ impl Crud for PgProgramStorage {
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
-            SELECT p.*
+            SELECT p.id,
+                   p.created_date_time,
+                   p.modification_date_time,
+                   p.program_name,
+                   p.program_long_name,
+                   p.retailer_name,
+                   p.retailer_long_name,
+                   p.program_type,
+                   p.country,
+                   p.principal_subdivision,
+                   p.interval_period,
+                   p.program_descriptions,
+                   p.binding_events,
+                   p.local_price,
+                   p.payload_descriptors,
+                   p.targets
             FROM program p
               LEFT JOIN ven_program vp ON p.id = vp.program_id
             WHERE id = $1
@@ -331,15 +357,17 @@ impl Crud for PgProgramStorage {
         &self,
         id: &Self::Id,
         new: Self::NewType,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
         let (targets, vens) = extract_vens(new.targets);
+        let business_id = extract_business_id(user)?;
+
         let mut tx = self.db.begin().await?;
 
         let program: Program = sqlx::query_as!(
             PostgresProgram,
             r#"
-            UPDATE program
+            UPDATE program p
             SET modification_date_time = now(),
                 program_name = $2,
                 program_long_name = $3,
@@ -355,7 +383,23 @@ impl Crud for PgProgramStorage {
                 payload_descriptors = $13,
                 targets = $14
             WHERE id = $1
-            RETURNING *
+                AND ($15::text IS NULL OR business_id = $15)
+            RETURNING p.id,
+                   p.created_date_time,
+                   p.modification_date_time,
+                   p.program_name,
+                   p.program_long_name,
+                   p.retailer_name,
+                   p.retailer_long_name,
+                   p.program_type,
+                   p.country,
+                   p.principal_subdivision,
+                   p.interval_period,
+                   p.program_descriptions,
+                   p.binding_events,
+                   p.local_price,
+                   p.payload_descriptors,
+                   p.targets
             "#,
             id.as_str(),
             new.program_name,
@@ -371,6 +415,7 @@ impl Crud for PgProgramStorage {
             new.local_price,
             to_json_value(new.payload_descriptors)?,
             to_json_value(targets)?,
+            business_id
         )
         .fetch_one(&mut *tx)
         .await?
@@ -410,14 +455,35 @@ impl Crud for PgProgramStorage {
     async fn delete(
         &self,
         id: &Self::Id,
-        _user: &Self::PermissionFilter,
+        user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let business_id = extract_business_id(user)?;
+
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
-            DELETE FROM program WHERE id = $1 RETURNING *
+            DELETE FROM program p
+                   WHERE id = $1
+                     AND ($2::text IS NULL OR business_id = $2)
+            RETURNING p.id,
+                   p.created_date_time,
+                   p.modification_date_time,
+                   p.program_name,
+                   p.program_long_name,
+                   p.retailer_name,
+                   p.retailer_long_name,
+                   p.program_type,
+                   p.country,
+                   p.principal_subdivision,
+                   p.interval_period,
+                   p.program_descriptions,
+                   p.binding_events,
+                   p.local_price,
+                   p.payload_descriptors,
+                   p.targets
             "#,
-            id.as_str()
+            id.as_str(),
+            business_id,
         )
         .fetch_one(&self.db)
         .await?

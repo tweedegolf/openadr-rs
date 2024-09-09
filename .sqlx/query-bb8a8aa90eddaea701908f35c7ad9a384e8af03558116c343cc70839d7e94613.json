@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO program (id, created_date_time, modification_date_time, program_name, program_long_name, retailer_name, retailer_long_name, program_type, country, principal_subdivision, interval_period, program_descriptions, binding_events, local_price, payload_descriptors, targets)\n            VALUES (gen_random_uuid(), now(), now(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\n            RETURNING *\n            ",
+  "query": "\n            SELECT p.id,\n                   p.created_date_time,\n                   p.modification_date_time,\n                   p.program_name,\n                   p.program_long_name,\n                   p.retailer_name,\n                   p.retailer_long_name,\n                   p.program_type,\n                   p.country,\n                   p.principal_subdivision,\n                   p.interval_period,\n                   p.program_descriptions,\n                   p.binding_events,\n                   p.local_price,\n                   p.payload_descriptors,\n                   p.targets\n            FROM program p\n              LEFT JOIN ven_program vp ON p.id = vp.program_id\n            WHERE id = $1\n              AND (NOT $2 OR vp.ven_id IS NULL OR vp.ven_id = ANY($3)) -- Filter for VEN ids\n            ",
   "describe": {
     "columns": [
       {
@@ -87,18 +87,8 @@
     "parameters": {
       "Left": [
         "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Text",
-        "Jsonb",
-        "Jsonb",
         "Bool",
-        "Bool",
-        "Jsonb",
-        "Jsonb"
+        "TextArray"
       ]
     },
     "nullable": [
@@ -120,5 +110,5 @@
       true
     ]
   },
-  "hash": "4bbc9508c472b40fcb347e07fc87111aa20ad67c89817380049ec3c905599fdb"
+  "hash": "bb8a8aa90eddaea701908f35c7ad9a384e8af03558116c343cc70839d7e94613"
 }
