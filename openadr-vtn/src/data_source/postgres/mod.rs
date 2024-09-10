@@ -130,6 +130,7 @@ fn extract_business_ids(user: &Claims) -> Option<Vec<String>> {
     }
 }
 
+#[derive(Debug)]
 struct PgId {
     id: String,
 }

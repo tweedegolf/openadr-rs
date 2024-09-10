@@ -66,7 +66,7 @@ mod test {
             .create(
                 std::time::Duration::from_secs(3600),
                 "admin".to_string(),
-                vec![AuthRole::AnyBusiness, AuthRole::UserManager],
+                vec![AuthRole::AnyBusiness],
             )
             .unwrap()
     }

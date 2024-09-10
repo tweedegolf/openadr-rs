@@ -143,6 +143,13 @@ create table ven_program
 create table user_business
 (
     user_id     text not null references "user" (id) on delete cascade,
-    business_id text references business (id) on delete cascade,
-    constraint user_business_pk primary key (user_id, business_id)
+    business_id text references business (id) on delete cascade
 );
+
+-- allow at most one null entry per business, counting as `AnyBusiness`
+create unique index null_test_user_business
+    on user_business (user_id, (business_id is null))
+    where business_id is null;
+
+create unique index uindex_user_business
+    on user_business (user_id, business_id);

@@ -102,6 +102,5 @@ pub trait DataSource: Send + Sync + 'static {
 #[derive(Debug, Clone)]
 pub struct AuthInfo {
     pub client_id: String,
-    pub client_secret: String,
     pub roles: Vec<AuthRole>,
 }
