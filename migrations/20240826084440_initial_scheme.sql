@@ -81,12 +81,6 @@ create table "user"
             primary key
 );
 
-create table user_roles
-(
-    user_id text  not null references "user" (id) on delete cascade,
-    role    jsonb not null
-);
-
 create table user_credentials
 (
     user_id       text not null references "user" (id) on delete cascade,

@@ -582,6 +582,17 @@ mod tests {
         }
     }
 
+    fn program_3() -> Program {
+        Program {
+            id: "program-3".parse().unwrap(),
+            content: ProgramContent {
+                program_name: "program-3".to_string(),
+                ..program_2().content
+            },
+            ..program_2()
+        }
+    }
+
     mod get_all {
         use super::*;
         use openadr_wire::target::TargetLabel;
@@ -593,9 +604,9 @@ mod tests {
                 .retrieve_all(&Default::default(), &Claims::any_business_user())
                 .await
                 .unwrap();
-            assert_eq!(programs.len(), 2);
+            assert_eq!(programs.len(), 3);
             programs.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
-            assert_eq!(programs, vec![program_1(), program_2()]);
+            assert_eq!(programs, vec![program_1(), program_2(), program_3()]);
         }
 
         #[sqlx::test(fixtures("programs"))]
@@ -627,12 +638,12 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(programs.len(), 1);
+            assert_eq!(programs.len(), 2);
 
             let programs = repo
                 .retrieve_all(
                     &QueryParams {
-                        skip: 2,
+                        skip: 3,
                         ..Default::default()
                     },
                     &Claims::any_business_user(),

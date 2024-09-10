@@ -353,7 +353,7 @@ impl Crud for PgEventStorage {
         .fetch_one(&self.db)
         .await?;
 
-        check_write_permission(&program_id.id, user, &self.db).await?;
+        dbg!(check_write_permission(&program_id.id, user, &self.db).await?);
 
         Ok(sqlx::query_as!(
             PostgresEvent,
@@ -469,6 +469,18 @@ mod tests {
         }
     }
 
+    fn event_3() -> Event {
+        Event {
+            id: "event-3".parse().unwrap(),
+            content: EventContent {
+                program_id: "program-3".parse().unwrap(),
+                event_name: Some("event-3-name".to_string()),
+                ..event_2().content
+            },
+            ..event_2()
+        }
+    }
+
     mod get_all {
         use super::*;
 
@@ -479,9 +491,9 @@ mod tests {
                 .retrieve_all(&Default::default(), &Claims::any_business_user())
                 .await
                 .unwrap();
-            assert_eq!(events.len(), 2);
+            assert_eq!(events.len(), 3);
             events.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
-            assert_eq!(events, vec![event_1(), event_2()]);
+            assert_eq!(events, vec![event_1(), event_2(), event_3()]);
         }
 
         #[sqlx::test(fixtures("programs", "events"))]
@@ -514,7 +526,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(events.len(), 1);
+            assert_eq!(events.len(), 2);
 
             let events = repo
                 .retrieve_all(
@@ -547,7 +559,7 @@ mod tests {
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_1()]);
 
-            let events = repo
+            let mut events = repo
                 .retrieve_all(
                     &QueryParams {
                         target_type: Some(TargetLabel::Private("SOME_TARGET".to_string())),
@@ -558,8 +570,9 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(events.len(), 1);
-            assert_eq!(events, vec![event_2()]);
+            assert_eq!(events.len(), 2);
+            events.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+            assert_eq!(events, vec![event_2(), event_3()]);
 
             let events = repo
                 .retrieve_all(

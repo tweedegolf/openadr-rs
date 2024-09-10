@@ -112,6 +112,8 @@ mod test {
     use crate::api::test::*;
     // for `call`, `oneshot`, and `ready`
     use crate::data_source::DataSource;
+    // for `collect`
+    use crate::jwt::{AuthRole, Claims};
     use axum::{
         body::Body,
         http::{self, Request, Response, StatusCode},
@@ -120,8 +122,6 @@ mod test {
     use http_body_util::BodyExt;
     use openadr_wire::event::Priority;
     use sqlx::PgPool;
-    // for `collect`
-    use crate::jwt::Claims;
     use tower::{Service, ServiceExt};
 
     fn default_event_content() -> EventContent {
@@ -176,7 +176,7 @@ mod test {
     async fn get(db: PgPool) {
         let (state, mut events) = state_with_events(vec![default_event_content()], db).await;
         let event = events.remove(0);
-        let token = get_admin_token_from_state(&state);
+        let token = jwt_test_token(&state, vec![AuthRole::AnyBusiness]);
         let app = state.into_router();
 
         let response = app
@@ -218,7 +218,7 @@ mod test {
         };
 
         let (state, events) = state_with_events(vec![event1, event2.clone(), event3], db).await;
-        let token = get_admin_token_from_state(&state);
+        let token = jwt_test_token(&state, vec![AuthRole::AnyBusiness]);
         let mut app = state.into_router();
 
         let event_id = events[1].id.clone();
@@ -256,7 +256,7 @@ mod test {
     async fn update(db: PgPool) {
         let (state, mut events) = state_with_events(vec![default_event_content()], db).await;
         let event = events.remove(0);
-        let token = get_admin_token_from_state(&state);
+        let token = jwt_test_token(&state, vec![AuthRole::AnyBusiness]);
         let app = state.into_router();
 
         let response = app
@@ -273,40 +273,39 @@ mod test {
         assert!(event.modification_date_time < db_program.modification_date_time);
     }
 
-    #[sqlx::test(fixtures("programs"))]
-    async fn create_same_name(db: PgPool) {
-        let (state, _) = state_with_events(vec![], db).await;
-        let token = get_admin_token_from_state(&state);
-        let mut app = state.into_router();
-
-        let content = default_event_content();
-
+    async fn help_create_event(
+        mut app: &mut Router,
+        content: &EventContent,
+        token: &str,
+    ) -> Response<Body> {
         let request = Request::builder()
             .method(http::Method::POST)
             .uri("/events")
             .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
             .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(&content).unwrap()))
+            .body(Body::from(serde_json::to_vec(content).unwrap()))
             .unwrap();
 
-        let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        ServiceExt::<Request<Body>>::ready(&mut app)
             .await
             .unwrap()
             .call(request)
             .await
-            .unwrap();
+            .unwrap()
+    }
+
+    #[sqlx::test(fixtures("programs"))]
+    async fn create_same_name(db: PgPool) {
+        let (state, _) = state_with_events(vec![], db).await;
+        let token = jwt_test_token(&state, vec![AuthRole::AnyBusiness]);
+        let mut app = state.into_router();
+
+        let content = default_event_content();
+
+        let response = help_create_event(&mut app, &content, &token).await;
         assert_eq!(response.status(), StatusCode::CREATED);
 
-        let request = Request::builder()
-            .method(http::Method::POST)
-            .uri("/events")
-            .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
-            .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
-            .body(Body::from(serde_json::to_vec(&content).unwrap()))
-            .unwrap();
-
-        // event names don't need to be unique
-        let response = app.oneshot(request).await.unwrap();
+        let response = help_create_event(&mut app, &content, &token).await;
         assert_eq!(response.status(), StatusCode::CREATED);
     }
 
@@ -350,7 +349,7 @@ mod test {
         };
 
         let (state, _) = state_with_events(vec![event1, event2, event3], db).await;
-        let token = get_admin_token_from_state(&state);
+        let token = jwt_test_token(&state, vec![AuthRole::AnyBusiness]);
         let mut app = state.into_router();
 
         // no query params
@@ -448,5 +447,130 @@ mod test {
         let body = response.into_body().collect().await.unwrap().to_bytes();
         let programs: Vec<Event> = serde_json::from_slice(&body).unwrap();
         assert_eq!(programs.len(), 1);
+    }
+
+    mod permissions {
+        use super::*;
+
+        #[sqlx::test(fixtures("users", "programs", "business", "events"))]
+        async fn business_can_write_event_in_own_program_only(db: PgPool) {
+            let (state, _) = state_with_events(vec![], db).await;
+            let mut app = state.clone().into_router();
+
+            let content = EventContent {
+                program_id: "program-3".parse().unwrap(),
+                ..default_event_content()
+            };
+
+            let token = jwt_test_token(&state, vec![AuthRole::Business("business-1".to_string())]);
+            let response = help_create_event(&mut app, &content, &token).await;
+            assert_eq!(response.status(), StatusCode::CREATED);
+
+            let token = jwt_test_token(&state, vec![AuthRole::Business("business-2".to_string())]);
+            let response = help_create_event(&mut app, &content, &token).await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+            let token = jwt_test_token(
+                &state,
+                vec![
+                    AuthRole::AnyBusiness,
+                    AuthRole::Business("business-2".to_string()),
+                ],
+            );
+            let response = help_create_event(&mut app, &content, &token).await;
+            assert_eq!(response.status(), StatusCode::CREATED);
+
+            let token = jwt_test_token(&state, vec![AuthRole::Business("business-2".to_string())]);
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(http::Method::DELETE)
+                        .uri(format!("/events/{}", "event-3"))
+                        .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+            let token = jwt_test_token(&state, vec![AuthRole::Business("business-2".to_string())]);
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(http::Method::PUT)
+                        .uri(format!("/events/{}", "event-3"))
+                        .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
+                        .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                        .body(Body::from(serde_json::to_vec(&content).unwrap()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+            let token = jwt_test_token(&state, vec![AuthRole::Business("business-1".to_string())]);
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(http::Method::PUT)
+                        .uri(format!("/events/{}", "event-3"))
+                        .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
+                        .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+                        .body(Body::from(serde_json::to_vec(&content).unwrap()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+
+            let token = jwt_test_token(&state, vec![AuthRole::Business("business-1".to_string())]);
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(http::Method::DELETE)
+                        .uri(format!("/events/{}", "event-3"))
+                        .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        #[sqlx::test(fixtures("users", "programs", "business"))]
+        async fn business_can_read_event_in_own_program_only(db: PgPool) {
+            let (state, _) = state_with_events(vec![], db).await;
+            let mut app = state.clone().into_router();
+
+            let token = jwt_test_token(&state, vec![AuthRole::Business("business-1".to_string())]);
+
+            let content = EventContent {
+                program_id: "program-3".parse().unwrap(),
+                ..default_event_content()
+            };
+
+            let response = help_create_event(&mut app, &content, &token).await;
+            assert_eq!(response.status(), StatusCode::CREATED);
+
+            let token = jwt_test_token(&state, vec![AuthRole::Business("business-2".to_string())]);
+            let response = help_create_event(&mut app, &content, &token).await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+            let token = jwt_test_token(
+                &state,
+                vec![
+                    AuthRole::AnyBusiness,
+                    AuthRole::Business("business-2".to_string()),
+                ],
+            );
+            let response = help_create_event(&mut app, &content, &token).await;
+            assert_eq!(response.status(), StatusCode::CREATED);
+        }
     }
 }
