@@ -2,7 +2,7 @@ use crate::api::event::QueryParams;
 use crate::data_source::postgres::{extract_business_ids, to_json_value, PgId, PgTargetsFilter};
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
-use crate::jwt::Claims;
+use crate::jwt::{BusinessIds, Claims};
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::event::{EventContent, EventId, Priority};
@@ -227,6 +227,11 @@ impl Crud for PgEventStorage {
         id: &Self::Id,
         user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let business_ids = match user.business_ids() {
+            BusinessIds::Specific(ids) => Some(ids),
+            BusinessIds::Any => None,
+        };
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -235,11 +240,17 @@ impl Crud for PgEventStorage {
               JOIN program p ON e.program_id = p.id
               LEFT JOIN ven_program vp ON p.id = vp.program_id
             WHERE e.id = $1
-              AND (NOT $2 OR vp.ven_id IS NULL OR vp.ven_id = ANY($3)) -- Filter for VEN ids
+              AND (
+                  ($2 AND (vp.ven_id IS NULL OR vp.ven_id = ANY($3))) 
+                  OR 
+                  ($4 AND ($5::text[] IS NULL OR p.business_id = ANY ($5)))
+                  )
             "#,
             id.as_str(),
             user.is_ven(),
-            &user.ven_ids()
+            &user.ven_ids(),
+            user.is_business(),
+            business_ids.as_deref(),
         )
         .fetch_one(&self.db)
         .await?
@@ -254,6 +265,11 @@ impl Crud for PgEventStorage {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
 
+        let business_ids = match user.business_ids() {
+            BusinessIds::Specific(ids) => Some(ids),
+            BusinessIds::Any => None,
+        };
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -267,8 +283,13 @@ impl Crud for PgEventStorage {
               AND ($3::text[] IS NULL OR p.program_name = ANY($3))
               AND ($4::text[] IS NULL OR v.ven_name = ANY($4))
               AND ($5::jsonb = '[]'::jsonb OR $5::jsonb <@ e.targets)
-              AND (NOT $6 OR v.id IS NULL OR v.id = ANY($7)) -- Filter for VEN ids
-            OFFSET $8 LIMIT $9
+              AND (
+                  ($6 AND (vp.ven_id IS NULL OR vp.ven_id = ANY($7))) 
+                  OR 
+                  ($8 AND ($9::text[] IS NULL OR p.business_id = ANY ($9)))
+                  )
+            GROUP BY e.id
+            OFFSET $10 LIMIT $11
             "#,
             pg_filter.program_id,
             pg_filter.event_names,
@@ -278,6 +299,8 @@ impl Crud for PgEventStorage {
                 .map_err(AppError::SerdeJsonInternalServerError)?,
             user.is_ven(),
             &user.ven_ids(),
+            user.is_business(),
+            business_ids.as_deref(),
             pg_filter.skip,
             pg_filter.limit
         )
@@ -353,7 +376,7 @@ impl Crud for PgEventStorage {
         .fetch_one(&self.db)
         .await?;
 
-        dbg!(check_write_permission(&program_id.id, user, &self.db).await?);
+        check_write_permission(&program_id.id, user, &self.db).await?;
 
         Ok(sqlx::query_as!(
             PostgresEvent,
