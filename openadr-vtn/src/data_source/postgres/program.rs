@@ -1,7 +1,10 @@
 use crate::api::program::QueryParams;
-use crate::data_source::postgres::to_json_value;
+use crate::data_source::postgres::{
+    extract_business_id, extract_vens, to_json_value, PgTargetsFilter,
+};
 use crate::data_source::{Crud, ProgramCrud};
 use crate::error::AppError;
+use crate::jwt::Claims;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::program::{ProgramContent, ProgramId};
@@ -122,8 +125,7 @@ struct PostgresFilter<'a> {
     program_names: Option<&'a [String]>,
     // TODO check whether we also need to extract `PowerServiceLocation`, `ServiceArea`,
     //  `ResourceNames`, and `Group`, i.e., only leave the `Private`
-    target_type: Option<&'a str>,
-    target_values: Option<&'a [String]>,
+    targets: Vec<PgTargetsFilter<'a>>,
 
     skip: i64,
     limit: i64,
@@ -140,9 +142,16 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
             Some(TargetLabel::VENName) => filter.ven_names = query.target_values.as_deref(),
             Some(TargetLabel::EventName) => filter.event_names = query.target_values.as_deref(),
             Some(TargetLabel::ProgramName) => filter.program_names = query.target_values.as_deref(),
-            Some(_) => {
-                filter.target_type = query.target_type.as_ref().map(|t| t.as_str());
-                filter.target_values = query.target_values.as_deref()
+            Some(ref label) => {
+                if let Some(values) = query.target_values.as_ref() {
+                    filter.targets = values
+                        .iter()
+                        .map(|value| PgTargetsFilter {
+                            label: label.as_str(),
+                            value: [value.clone()],
+                        })
+                        .collect()
+                }
             }
             None => {}
         };
@@ -158,14 +167,55 @@ impl Crud for PgProgramStorage {
     type NewType = ProgramContent;
     type Error = AppError;
     type Filter = QueryParams;
+    type PermissionFilter = Claims;
 
-    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error> {
-        Ok(sqlx::query_as!(
+    async fn create(
+        &self,
+        new: Self::NewType,
+        user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
+        let (targets, vens) = extract_vens(new.targets);
+        let business_id = extract_business_id(user)?;
+
+        let mut tx = self.db.begin().await?;
+
+        let program: Program = sqlx::query_as!(
             PostgresProgram,
             r#"
-            INSERT INTO program (id, created_date_time, modification_date_time, program_name, program_long_name, retailer_name, retailer_long_name, program_type, country, principal_subdivision, interval_period, program_descriptions, binding_events, local_price, payload_descriptors, targets)
-            VALUES (gen_random_uuid(), now(), now(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING *
+            INSERT INTO program (id,
+                                 created_date_time,
+                                 modification_date_time,
+                                 program_name,
+                                 program_long_name,
+                                 retailer_name,
+                                 retailer_long_name,
+                                 program_type,
+                                 country,
+                                 principal_subdivision,
+                                 interval_period,
+                                 program_descriptions,
+                                 binding_events,
+                                 local_price,
+                                 payload_descriptors,
+                                 targets,
+                                 business_id)
+            VALUES (gen_random_uuid(), now(), now(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING id,
+                      created_date_time,
+                      modification_date_time,
+                      program_name,
+                      program_long_name,
+                      retailer_name,
+                      retailer_long_name,
+                      program_type,
+                      country,
+                      principal_subdivision,
+                      interval_period,
+                      program_descriptions,
+                      binding_events,
+                      local_price,
+                      payload_descriptors,
+                      targets
             "#,
             new.program_name,
             new.program_long_name,
@@ -179,27 +229,79 @@ impl Crud for PgProgramStorage {
             new.binding_events,
             new.local_price,
             to_json_value(new.payload_descriptors)?,
-            to_json_value(new.targets)?,
+            to_json_value(targets)?,
+            business_id,
         )
-            .fetch_one(&self.db)
+            .fetch_one(&mut *tx)
             .await?
-            .try_into()?)
+            .try_into()?;
+
+        if let Some(vens) = vens {
+            let rows_affected = sqlx::query!(
+                r#"
+                INSERT INTO ven_program (program_id, ven_id)
+                    (SELECT $1, id FROM ven WHERE ven_name = ANY ($2))
+                "#,
+                program.id.as_str(),
+                &vens
+            )
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            if rows_affected as usize != vens.len() {
+                Err(AppError::Conflict(
+                    "One or multiple VEN names linked in the program do not exist".to_string(),
+                    None,
+                ))?
+            }
+        };
+        tx.commit().await?;
+        Ok(program)
     }
 
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn retrieve(
+        &self,
+        id: &Self::Id,
+        user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
-            SELECT * FROM program WHERE id = $1
+            SELECT p.id,
+                   p.created_date_time,
+                   p.modification_date_time,
+                   p.program_name,
+                   p.program_long_name,
+                   p.retailer_name,
+                   p.retailer_long_name,
+                   p.program_type,
+                   p.country,
+                   p.principal_subdivision,
+                   p.interval_period,
+                   p.program_descriptions,
+                   p.binding_events,
+                   p.local_price,
+                   p.payload_descriptors,
+                   p.targets
+            FROM program p
+              LEFT JOIN ven_program vp ON p.id = vp.program_id
+            WHERE id = $1
+              AND (NOT $2 OR vp.ven_id IS NULL OR vp.ven_id = ANY($3)) -- Filter for VEN ids
             "#,
-            id.as_str()
+            id.as_str(),
+            user.is_ven(),
+            &user.ven_ids()
         )
         .fetch_one(&self.db)
         .await?
         .try_into()?)
     }
 
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+    async fn retrieve_all(
+        &self,
+        filter: &Self::Filter,
+        user: &Self::PermissionFilter,
+    ) -> Result<Vec<Self::Type>, Self::Error> {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
 
@@ -223,21 +325,26 @@ impl Crud for PgProgramStorage {
                    p.payload_descriptors,
                    p.targets
             FROM program p
-              LEFT JOIN event e on p.id = e.program_id
-            WHERE ($1::text[] IS NULL OR TRUE) -- TODO implement filtering based on VEN names
-              AND ($2::text[] IS NULL OR e.event_name = ANY($2))
-              AND ($3::text[] IS NULL OR p.program_name = ANY($3))
-              AND ($4::text IS NULL OR jsonb_path_query_array(p.targets, '$[*].type') ? $4)
-              AND ($5::text[] IS NULL OR jsonb_path_query_array(p.targets, '$[*].values[*]') ?| ($5))
-            OFFSET $6 LIMIT $7
+              LEFT JOIN event e ON p.id = e.program_id
+              LEFT JOIN ven_program vp ON p.id = vp.program_id
+              LEFT JOIN ven v ON v.id = vp.ven_id
+            WHERE ($1::text[] IS NULL OR e.event_name = ANY($1))
+              AND ($2::text[] IS NULL OR p.program_name = ANY($2))
+              AND ($3::text[] IS NULL OR v.ven_name = ANY($3))
+              AND ($4::jsonb = '[]'::jsonb OR $4::jsonb <@ p.targets)
+              AND (NOT $5 OR v.id IS NULL OR v.id = ANY($6)) -- Filter for VEN ids
+            GROUP BY p.id
+            OFFSET $7 LIMIT $8
             "#,
-            pg_filter.ven_names,
             pg_filter.event_names,
             pg_filter.program_names,
-            pg_filter.target_type,
-            pg_filter.target_values,
+            pg_filter.ven_names,
+            serde_json::to_value(pg_filter.targets)
+                .map_err(AppError::SerdeJsonInternalServerError)?,
+            user.is_ven(),
+            &user.ven_ids(),
             pg_filter.skip,
-            pg_filter.limit
+            pg_filter.limit,
         )
         .fetch_all(&self.db)
         .await?
@@ -246,11 +353,21 @@ impl Crud for PgProgramStorage {
         .collect::<Result<_, _>>()?)
     }
 
-    async fn update(&self, id: &Self::Id, new: Self::NewType) -> Result<Self::Type, Self::Error> {
-        Ok(sqlx::query_as!(
+    async fn update(
+        &self,
+        id: &Self::Id,
+        new: Self::NewType,
+        user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
+        let (targets, vens) = extract_vens(new.targets);
+        let business_id = extract_business_id(user)?;
+
+        let mut tx = self.db.begin().await?;
+
+        let program: Program = sqlx::query_as!(
             PostgresProgram,
             r#"
-            UPDATE program
+            UPDATE program p
             SET modification_date_time = now(),
                 program_name = $2,
                 program_long_name = $3,
@@ -266,7 +383,23 @@ impl Crud for PgProgramStorage {
                 payload_descriptors = $13,
                 targets = $14
             WHERE id = $1
-            RETURNING *
+                AND ($15::text IS NULL OR business_id = $15)
+            RETURNING p.id,
+                   p.created_date_time,
+                   p.modification_date_time,
+                   p.program_name,
+                   p.program_long_name,
+                   p.retailer_name,
+                   p.retailer_long_name,
+                   p.program_type,
+                   p.country,
+                   p.principal_subdivision,
+                   p.interval_period,
+                   p.program_descriptions,
+                   p.binding_events,
+                   p.local_price,
+                   p.payload_descriptors,
+                   p.targets
             "#,
             id.as_str(),
             new.program_name,
@@ -281,20 +414,76 @@ impl Crud for PgProgramStorage {
             new.binding_events,
             new.local_price,
             to_json_value(new.payload_descriptors)?,
-            to_json_value(new.targets)?,
+            to_json_value(targets)?,
+            business_id
         )
-        .fetch_one(&self.db)
+        .fetch_one(&mut *tx)
         .await?
-        .try_into()?)
+        .try_into()?;
+
+        if let Some(vens) = vens {
+            sqlx::query!(
+                r#"
+                DELETE FROM ven_program WHERE program_id = $1
+                "#,
+                program.id.as_str()
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            let rows_affected = sqlx::query!(
+                r#"
+                INSERT INTO ven_program (program_id, ven_id)
+                    (SELECT $1, id FROM ven WHERE ven_name = ANY($2))
+                "#,
+                program.id.as_str(),
+                &vens
+            )
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            if rows_affected as usize != vens.len() {
+                Err(AppError::BadRequest(
+                    "One or multiple VEN names linked in the program do not exist",
+                ))?
+            }
+        };
+        tx.commit().await?;
+        Ok(program)
     }
 
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn delete(
+        &self,
+        id: &Self::Id,
+        user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
+        let business_id = extract_business_id(user)?;
+
         Ok(sqlx::query_as!(
             PostgresProgram,
             r#"
-            DELETE FROM program WHERE id = $1 RETURNING *
+            DELETE FROM program p
+                   WHERE id = $1
+                     AND ($2::text IS NULL OR business_id = $2)
+            RETURNING p.id,
+                   p.created_date_time,
+                   p.modification_date_time,
+                   p.program_name,
+                   p.program_long_name,
+                   p.retailer_name,
+                   p.retailer_long_name,
+                   p.program_type,
+                   p.country,
+                   p.principal_subdivision,
+                   p.interval_period,
+                   p.program_descriptions,
+                   p.binding_events,
+                   p.local_price,
+                   p.payload_descriptors,
+                   p.targets
             "#,
-            id.as_str()
+            id.as_str(),
+            business_id,
         )
         .fetch_one(&self.db)
         .await?
@@ -309,6 +498,7 @@ mod tests {
     use crate::data_source::postgres::program::PgProgramStorage;
     use crate::data_source::Crud;
     use crate::error::AppError;
+    use crate::jwt::Claims;
     use openadr_wire::event::{EventPayloadDescriptor, EventType};
     use openadr_wire::interval::IntervalPeriod;
     use openadr_wire::program::{PayloadDescriptor, ProgramContent, ProgramDescription};
@@ -353,10 +543,16 @@ mod tests {
                 payload_descriptors: Some(vec![PayloadDescriptor::EventPayloadDescriptor(
                     EventPayloadDescriptor::new(EventType::ExportPrice),
                 )]),
-                targets: Some(TargetMap(vec![TargetEntry {
-                    label: TargetLabel::Group,
-                    values: ["group-1".to_string()],
-                }])),
+                targets: Some(TargetMap(vec![
+                    TargetEntry {
+                        label: TargetLabel::Group,
+                        values: ["group-1".to_string()],
+                    },
+                    TargetEntry {
+                        label: TargetLabel::Private("PRIVATE_LABEL".to_string()),
+                        values: ["private value".to_string()],
+                    },
+                ])),
             },
         }
     }
@@ -386,6 +582,17 @@ mod tests {
         }
     }
 
+    fn program_3() -> Program {
+        Program {
+            id: "program-3".parse().unwrap(),
+            content: ProgramContent {
+                program_name: "program-3".to_string(),
+                ..program_2().content
+            },
+            ..program_2()
+        }
+    }
+
     mod get_all {
         use super::*;
         use openadr_wire::target::TargetLabel;
@@ -393,19 +600,26 @@ mod tests {
         #[sqlx::test(fixtures("programs"))]
         async fn default_get_all(db: PgPool) {
             let repo: PgProgramStorage = db.into();
-            let programs = repo.retrieve_all(&Default::default()).await.unwrap();
-            assert_eq!(programs.len(), 2);
-            assert_eq!(programs, vec![program_2(), program_1()]);
+            let mut programs = repo
+                .retrieve_all(&Default::default(), &Claims::any_business_user())
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 3);
+            programs.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+            assert_eq!(programs, vec![program_1(), program_2(), program_3()]);
         }
 
         #[sqlx::test(fixtures("programs"))]
         async fn limit_get_all(db: PgPool) {
             let repo: PgProgramStorage = db.into();
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    limit: 1,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        limit: 1,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 1);
@@ -415,19 +629,25 @@ mod tests {
         async fn skip_get_all(db: PgPool) {
             let repo: PgProgramStorage = db.into();
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    skip: 1,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 1,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
-            assert_eq!(programs.len(), 1);
+            assert_eq!(programs.len(), 2);
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    skip: 2,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 3,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 0);
@@ -438,42 +658,72 @@ mod tests {
             let repo: PgProgramStorage = db.into();
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["group-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["group-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 1);
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["not-existent".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 0);
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::ProgramName),
-                    target_values: Some(vec!["program-2".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::ProgramName),
+                        target_values: Some(vec!["program-2".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 1);
             assert_eq!(programs, vec![program_2()]);
 
             let programs = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::ProgramName),
-                    target_values: Some(vec!["program-not-existent".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::ProgramName),
+                        target_values: Some(vec!["program-not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(programs.len(), 0);
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn filter_multiple_targets(db: PgPool) {
+            let repo: PgProgramStorage = db.into();
+
+            let programs = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["private value".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(programs.len(), 0);
@@ -487,7 +737,10 @@ mod tests {
         async fn get_existing(db: PgPool) {
             let repo: PgProgramStorage = db.into();
 
-            let program = repo.retrieve(&"program-1".parse().unwrap()).await.unwrap();
+            let program = repo
+                .retrieve(&"program-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(program, program_1());
         }
 
@@ -495,7 +748,10 @@ mod tests {
         async fn get_not_existent(db: PgPool) {
             let repo: PgProgramStorage = db.into();
             let program = repo
-                .retrieve(&"program-not-existent".parse().unwrap())
+                .retrieve(
+                    &"program-not-existent".parse().unwrap(),
+                    &Claims::any_business_user(),
+                )
                 .await;
 
             assert!(matches!(program, Err(AppError::NotFound)));
@@ -510,7 +766,10 @@ mod tests {
         async fn add(db: PgPool) {
             let repo: PgProgramStorage = db.into();
 
-            let program = repo.create(program_1().content).await.unwrap();
+            let program = repo
+                .create(program_1().content, &Claims::any_business_user())
+                .await
+                .unwrap();
             assert!(program.created_date_time < Utc::now() + Duration::minutes(10));
             assert!(program.created_date_time > Utc::now() - Duration::minutes(10));
             assert!(program.modification_date_time < Utc::now() + Duration::minutes(10));
@@ -521,7 +780,9 @@ mod tests {
         async fn add_existing_name(db: PgPool) {
             let repo: PgProgramStorage = db.into();
 
-            let program = repo.create(program_1().content).await;
+            let program = repo
+                .create(program_1().content, &Claims::any_business_user())
+                .await;
             assert!(matches!(program, Err(AppError::Conflict(_, _))));
         }
     }
@@ -534,7 +795,11 @@ mod tests {
         async fn updates_modify_time(db: PgPool) {
             let repo: PgProgramStorage = db.into();
             let program = repo
-                .update(&"program-1".parse().unwrap(), program_1().content)
+                .update(
+                    &"program-1".parse().unwrap(),
+                    program_1().content,
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
 
@@ -556,12 +821,19 @@ mod tests {
             updated.program_name = "updated_name".parse().unwrap();
 
             let program = repo
-                .update(&"program-1".parse().unwrap(), updated.clone())
+                .update(
+                    &"program-1".parse().unwrap(),
+                    updated.clone(),
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
 
             assert_eq!(program.content, updated);
-            let program = repo.retrieve(&"program-1".parse().unwrap()).await.unwrap();
+            let program = repo
+                .retrieve(&"program-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(program.content, updated);
         }
     }
@@ -572,20 +844,33 @@ mod tests {
         #[sqlx::test(fixtures("programs"))]
         async fn delete_existing(db: PgPool) {
             let repo: PgProgramStorage = db.into();
-            let program = repo.delete(&"program-1".parse().unwrap()).await.unwrap();
+            let program = repo
+                .delete(&"program-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(program, program_1());
 
-            let program = repo.retrieve(&"program-1".parse().unwrap()).await;
+            let program = repo
+                .retrieve(&"program-1".parse().unwrap(), &Claims::any_business_user())
+                .await;
             assert!(matches!(program, Err(AppError::NotFound)));
 
-            let program = repo.retrieve(&"program-2".parse().unwrap()).await.unwrap();
+            let program = repo
+                .retrieve(&"program-2".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(program, program_2());
         }
 
         #[sqlx::test(fixtures("programs"))]
         async fn delete_not_existing(db: PgPool) {
             let repo: PgProgramStorage = db.into();
-            let program = repo.delete(&"program-not-existing".parse().unwrap()).await;
+            let program = repo
+                .delete(
+                    &"program-not-existing".parse().unwrap(),
+                    &Claims::any_business_user(),
+                )
+                .await;
             assert!(matches!(program, Err(AppError::NotFound)));
         }
     }

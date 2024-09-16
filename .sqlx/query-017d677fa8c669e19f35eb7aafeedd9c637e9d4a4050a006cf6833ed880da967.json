@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE program\n            SET modification_date_time = now(),\n                program_name = $2,\n                program_long_name = $3,\n                retailer_name = $4,\n                retailer_long_name = $5,\n                program_type = $6,\n                country = $7,\n                principal_subdivision = $8,\n                interval_period = $9,\n                program_descriptions = $10,\n                binding_events = $11,\n                local_price = $12,\n                payload_descriptors = $13,\n                targets = $14\n            WHERE id = $1\n            RETURNING *\n            ",
+  "query": "\n            INSERT INTO program (id,\n                                 created_date_time,\n                                 modification_date_time,\n                                 program_name,\n                                 program_long_name,\n                                 retailer_name,\n                                 retailer_long_name,\n                                 program_type,\n                                 country,\n                                 principal_subdivision,\n                                 interval_period,\n                                 program_descriptions,\n                                 binding_events,\n                                 local_price,\n                                 payload_descriptors,\n                                 targets,\n                                 business_id)\n            VALUES (gen_random_uuid(), now(), now(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)\n            RETURNING id,\n                      created_date_time,\n                      modification_date_time,\n                      program_name,\n                      program_long_name,\n                      retailer_name,\n                      retailer_long_name,\n                      program_type,\n                      country,\n                      principal_subdivision,\n                      interval_period,\n                      program_descriptions,\n                      binding_events,\n                      local_price,\n                      payload_descriptors,\n                      targets\n            ",
   "describe": {
     "columns": [
       {
@@ -93,13 +93,13 @@
         "Text",
         "Text",
         "Text",
-        "Text",
         "Jsonb",
         "Jsonb",
         "Bool",
         "Bool",
         "Jsonb",
-        "Jsonb"
+        "Jsonb",
+        "Text"
       ]
     },
     "nullable": [
@@ -121,5 +121,5 @@
       true
     ]
   },
-  "hash": "46b10ab9db5bbb54e55872b2a04b03ebad35f12327f3950984e1154b31b11514"
+  "hash": "017d677fa8c669e19f35eb7aafeedd9c637e9d4a4050a006cf6833ed880da967"
 }

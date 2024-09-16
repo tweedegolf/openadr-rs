@@ -15,16 +15,16 @@ use openadr_wire::Report;
 use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
 use crate::data_source::ReportCrud;
 use crate::error::AppError;
-use crate::jwt::{BusinessUser, User};
+use crate::jwt::{BusinessUser, User, VENUser};
 
 pub async fn get_all(
     State(report_source): State<Arc<dyn ReportCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
-    User(_user): User,
+    User(user): User,
 ) -> AppResponse<Vec<Report>> {
     trace!(?query_params);
 
-    let reports = report_source.retrieve_all(&query_params).await?;
+    let reports = report_source.retrieve_all(&query_params, &user).await?;
 
     Ok(Json(reports))
 }
@@ -32,18 +32,18 @@ pub async fn get_all(
 pub async fn get(
     State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
-    User(_user): User,
+    User(user): User,
 ) -> AppResponse<Report> {
-    let report: Report = report_source.retrieve(&id).await?;
+    let report: Report = report_source.retrieve(&id, &user).await?;
     Ok(Json(report))
 }
 
 pub async fn add(
     State(report_source): State<Arc<dyn ReportCrud>>,
-    User(_user): User,
+    VENUser(user): VENUser,
     ValidatedJson(new_report): ValidatedJson<ReportContent>,
 ) -> Result<(StatusCode, Json<Report>), AppError> {
-    let report = report_source.create(new_report).await?;
+    let report = report_source.create(new_report, &user).await?;
 
     info!(%report.id, report_name=?report.content.report_name, "report created");
 
@@ -53,10 +53,10 @@ pub async fn add(
 pub async fn edit(
     State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
-    User(_user): User,
+    VENUser(user): VENUser,
     ValidatedJson(content): ValidatedJson<ReportContent>,
 ) -> AppResponse<Report> {
-    let report = report_source.update(&id, content).await?;
+    let report = report_source.update(&id, content, &user).await?;
 
     info!(%report.id, report_name=?report.content.report_name, "report updated");
 
@@ -65,10 +65,11 @@ pub async fn edit(
 
 pub async fn delete(
     State(report_source): State<Arc<dyn ReportCrud>>,
-    BusinessUser(_user): BusinessUser,
+    // TODO this contradicts the spec, which says that only VENs have write access
+    BusinessUser(user): BusinessUser,
     Path(id): Path<ReportId>,
 ) -> AppResponse<Report> {
-    let report = report_source.delete(&id).await?;
+    let report = report_source.delete(&id, &user).await?;
     info!(%id, "deleted report");
     Ok(Json(report))
 }

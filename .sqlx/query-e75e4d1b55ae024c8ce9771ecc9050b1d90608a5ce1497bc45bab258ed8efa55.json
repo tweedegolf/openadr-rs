@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT ub.business_id AS id \n            FROM user_business ub\n                JOIN \"user\" u ON u.id = ub.user_id\n                JOIN user_credentials c ON c.user_id = u.id\n            WHERE client_id = $1\n              AND client_secret = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "e75e4d1b55ae024c8ce9771ecc9050b1d90608a5ce1497bc45bab258ed8efa55"
+}

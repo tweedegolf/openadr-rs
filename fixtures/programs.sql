@@ -27,20 +27,30 @@ VALUES ('program-1',
         '{
           "start": "2024-07-25T08:31:10.776Z"
         }',
-        '[{
-          "URL": "https://program-description-1.com"
-        }]',
+        '[
+          {
+            "URL": "https://program-description-1.com"
+          }
+        ]',
         false,
         true,
-        '[{
-          "objectType": "EVENT_PAYLOAD_DESCRIPTOR",
-          "payloadType": "EXPORT_PRICE"
-        }]',
+        '[
+          {
+            "objectType": "EVENT_PAYLOAD_DESCRIPTOR",
+            "payloadType": "EXPORT_PRICE"
+          }
+        ]',
         '[
           {
             "type": "GROUP",
             "values": [
               "group-1"
+            ]
+          },
+          {
+            "type": "PRIVATE_LABEL",
+            "values": [
+              "private value"
             ]
           }
         ]'),
@@ -48,6 +58,22 @@ VALUES ('program-1',
         '2024-07-25 08:31:10.776000 +00:00',
         '2024-07-25 08:31:10.776000 +00:00',
         'program-2',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL),
+       ('program-3',
+        '2024-07-25 08:31:10.776000 +00:00',
+        '2024-07-25 08:31:10.776000 +00:00',
+        'program-3',
         NULL,
         NULL,
         NULL,

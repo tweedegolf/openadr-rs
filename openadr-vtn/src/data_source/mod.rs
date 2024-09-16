@@ -13,6 +13,7 @@ use std::sync::Arc;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresStorage;
 
+use crate::jwt::Claims;
 use crate::{error::AppError, jwt::AuthRole};
 
 #[async_trait]
@@ -22,12 +23,34 @@ pub trait Crud: Send + Sync + 'static {
     type NewType;
     type Error;
     type Filter;
+    type PermissionFilter;
 
-    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error>;
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error>;
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error>;
-    async fn update(&self, id: &Self::Id, new: Self::NewType) -> Result<Self::Type, Self::Error>;
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error>;
+    async fn create(
+        &self,
+        new: Self::NewType,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error>;
+    async fn retrieve(
+        &self,
+        id: &Self::Id,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error>;
+    async fn retrieve_all(
+        &self,
+        filter: &Self::Filter,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Vec<Self::Type>, Self::Error>;
+    async fn update(
+        &self,
+        id: &Self::Id,
+        new: Self::NewType,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error>;
+    async fn delete(
+        &self,
+        id: &Self::Id,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error>;
 }
 
 pub trait ProgramCrud:
@@ -37,6 +60,7 @@ pub trait ProgramCrud:
     NewType = ProgramContent,
     Error = AppError,
     Filter = crate::api::program::QueryParams,
+    PermissionFilter = Claims,
 >
 {
 }
@@ -47,6 +71,7 @@ pub trait ReportCrud:
     NewType = ReportContent,
     Error = AppError,
     Filter = crate::api::report::QueryParams,
+    PermissionFilter = Claims,
 >
 {
 }
@@ -57,6 +82,7 @@ pub trait EventCrud:
     NewType = EventContent,
     Error = AppError,
     Filter = crate::api::event::QueryParams,
+    PermissionFilter = Claims,
 >
 {
 }
@@ -76,6 +102,5 @@ pub trait DataSource: Send + Sync + 'static {
 #[derive(Debug, Clone)]
 pub struct AuthInfo {
     pub client_id: String,
-    pub client_secret: String,
     pub roles: Vec<AuthRole>,
 }

@@ -60,13 +60,13 @@ mod test {
     use crate::state::AppState;
 
     #[allow(dead_code)]
-    pub(crate) fn get_admin_token_from_state(state: &AppState) -> String {
+    pub(crate) fn jwt_test_token(state: &AppState, roles: Vec<AuthRole>) -> String {
         state
             .jwt_manager
             .create(
-                std::time::Duration::from_secs(3600),
-                "admin".to_string(),
-                vec![AuthRole::AnyBusiness, AuthRole::UserManager],
+                std::time::Duration::from_secs(60),
+                "test_admin".to_string(),
+                roles,
             )
             .unwrap()
     }

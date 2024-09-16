@@ -1,7 +1,8 @@
 use crate::api::event::QueryParams;
-use crate::data_source::postgres::to_json_value;
+use crate::data_source::postgres::{extract_business_ids, to_json_value, PgId, PgTargetsFilter};
 use crate::data_source::{Crud, EventCrud};
 use crate::error::AppError;
+use crate::jwt::{BusinessIds, Claims};
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::event::{EventContent, EventId, Priority};
@@ -9,7 +10,7 @@ use openadr_wire::target::TargetLabel;
 use openadr_wire::Event;
 use sqlx::PgPool;
 use std::str::FromStr;
-use tracing::error;
+use tracing::{error, trace};
 
 #[async_trait]
 impl EventCrud for PgEventStorage {}
@@ -117,8 +118,7 @@ struct PostgresFilter<'a> {
     program_names: Option<&'a [String]>,
     // TODO check whether we also need to extract `PowerServiceLocation`, `ServiceArea`,
     //  `ResourceNames`, and `Group`, i.e., only leave the `Private`
-    target_type: Option<&'a str>,
-    target_values: Option<&'a [String]>,
+    targets: Vec<PgTargetsFilter<'a>>,
 
     skip: i64,
     limit: i64,
@@ -136,15 +136,52 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
             Some(TargetLabel::VENName) => filter.ven_names = query.target_values.as_deref(),
             Some(TargetLabel::EventName) => filter.event_names = query.target_values.as_deref(),
             Some(TargetLabel::ProgramName) => filter.program_names = query.target_values.as_deref(),
-            Some(_) => {
-                filter.target_type = query.target_type.as_ref().map(|t| t.as_str());
-                filter.target_values = query.target_values.as_deref()
+            Some(ref label) => {
+                if let Some(values) = query.target_values.as_ref() {
+                    filter.targets = values
+                        .iter()
+                        .map(|value| PgTargetsFilter {
+                            label: label.as_str(),
+                            value: [value.clone()],
+                        })
+                        .collect()
+                }
             }
             None => {}
         };
 
         filter
     }
+}
+
+struct MaybePgId {
+    id: Option<String>,
+}
+
+async fn check_write_permission(
+    program_id: &str,
+    user: &Claims,
+    db: &PgPool,
+) -> Result<(), AppError> {
+    if let Some(business_ids) = extract_business_ids(user) {
+        let MaybePgId { id } = sqlx::query_as!(
+            MaybePgId,
+            r#"
+            SELECT business_id AS id FROM program WHERE id = $1
+            "#,
+            program_id
+        )
+        .fetch_one(db)
+        .await?;
+
+        // If no business is connected, anyone may write
+        if let Some(id) = id {
+            if !business_ids.contains(&id) {
+                Err(AppError::Forbidden("You do not have write permissions for events belonging to a program that belongs to another business logic"))?;
+            }
+        }
+    };
+    Ok(())
 }
 
 #[async_trait]
@@ -154,8 +191,15 @@ impl Crud for PgEventStorage {
     type NewType = EventContent;
     type Error = AppError;
     type Filter = QueryParams;
+    type PermissionFilter = Claims;
 
-    async fn create(&self, new: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn create(
+        &self,
+        new: Self::NewType,
+        user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
+        check_write_permission(new.program_id.as_str(), user, &self.db).await?;
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -178,21 +222,53 @@ impl Crud for PgEventStorage {
         )
     }
 
-    async fn retrieve(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn retrieve(
+        &self,
+        id: &Self::Id,
+        user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
+        let business_ids = match user.business_ids() {
+            BusinessIds::Specific(ids) => Some(ids),
+            BusinessIds::Any => None,
+        };
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
-            SELECT * FROM event WHERE id = $1
+            SELECT e.*
+            FROM event e
+              JOIN program p ON e.program_id = p.id
+              LEFT JOIN ven_program vp ON p.id = vp.program_id
+            WHERE e.id = $1
+              AND (
+                  ($2 AND (vp.ven_id IS NULL OR vp.ven_id = ANY($3))) 
+                  OR 
+                  ($4 AND ($5::text[] IS NULL OR p.business_id = ANY ($5)))
+                  )
             "#,
-            id.as_str()
+            id.as_str(),
+            user.is_ven(),
+            &user.ven_ids(),
+            user.is_business(),
+            business_ids.as_deref(),
         )
         .fetch_one(&self.db)
         .await?
         .try_into()?)
     }
 
-    async fn retrieve_all(&self, filter: &Self::Filter) -> Result<Vec<Self::Type>, Self::Error> {
+    async fn retrieve_all(
+        &self,
+        filter: &Self::Filter,
+        user: &Self::PermissionFilter,
+    ) -> Result<Vec<Self::Type>, Self::Error> {
         let pg_filter: PostgresFilter = filter.into();
+        trace!(?pg_filter);
+
+        let business_ids = match user.business_ids() {
+            BusinessIds::Specific(ids) => Some(ids),
+            BusinessIds::Any => None,
+        };
 
         Ok(sqlx::query_as!(
             PostgresEvent,
@@ -200,31 +276,62 @@ impl Crud for PgEventStorage {
             SELECT e.*
             FROM event e
               JOIN program p on p.id = e.program_id
-            WHERE ($1::text IS NULL OR program_id like $1)
-              AND ($2::text[] IS NULL OR TRUE) -- TODO filter for ven_names
-              AND ($3::text[] IS NULL OR event_name = ANY($3))
-              AND ($4::text[] IS NULL OR p.program_name = ANY($4))
-              AND ($5::text IS NULL OR jsonb_path_query_array(e.targets, '$[*].type') ? $5)
-              AND ($6::text[] IS NULL OR jsonb_path_query_array(e.targets, '$[*].values[*]') ?| ($6))
-            OFFSET $7 LIMIT $8
+              LEFT JOIN ven_program vp ON p.id = vp.program_id
+              LEFT JOIN ven v ON v.id = vp.ven_id
+            WHERE ($1::text IS NULL OR e.program_id like $1)
+              AND ($2::text[] IS NULL OR e.event_name = ANY($2))
+              AND ($3::text[] IS NULL OR p.program_name = ANY($3))
+              AND ($4::text[] IS NULL OR v.ven_name = ANY($4))
+              AND ($5::jsonb = '[]'::jsonb OR $5::jsonb <@ e.targets)
+              AND (
+                  ($6 AND (vp.ven_id IS NULL OR vp.ven_id = ANY($7))) 
+                  OR 
+                  ($8 AND ($9::text[] IS NULL OR p.business_id = ANY ($9)))
+                  )
+            GROUP BY e.id
+            OFFSET $10 LIMIT $11
             "#,
             pg_filter.program_id,
-            pg_filter.ven_names,
             pg_filter.event_names,
             pg_filter.program_names,
-            pg_filter.target_type,
-            pg_filter.target_values,
+            pg_filter.ven_names,
+            serde_json::to_value(pg_filter.targets)
+                .map_err(AppError::SerdeJsonInternalServerError)?,
+            user.is_ven(),
+            &user.ven_ids(),
+            user.is_business(),
+            business_ids.as_deref(),
             pg_filter.skip,
             pg_filter.limit
         )
-            .fetch_all(&self.db)
-            .await?
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<_, _>>()?)
+        .fetch_all(&self.db)
+        .await?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<_, _>>()?)
     }
 
-    async fn update(&self, id: &Self::Id, new: Self::NewType) -> Result<Self::Type, Self::Error> {
+    async fn update(
+        &self,
+        id: &Self::Id,
+        new: Self::NewType,
+        user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
+        check_write_permission(new.program_id.as_str(), user, &self.db).await?;
+
+        let previous_program_id = sqlx::query_as!(
+            PgId,
+            r#"SELECT program_id AS id FROM event WHERE id = $1"#,
+            id.as_str()
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        // make sure, you cannot 'steal' an event from another business
+        if previous_program_id.id != new.program_id.as_str() {
+            check_write_permission(&previous_program_id.id, user, &self.db).await?;
+        }
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -256,7 +363,21 @@ impl Crud for PgEventStorage {
         .try_into()?)
     }
 
-    async fn delete(&self, id: &Self::Id) -> Result<Self::Type, Self::Error> {
+    async fn delete(
+        &self,
+        id: &Self::Id,
+        user: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error> {
+        let program_id = sqlx::query_as!(
+            PgId,
+            r#"SELECT program_id AS id FROM event WHERE id = $1"#,
+            id.as_str()
+        )
+        .fetch_one(&self.db)
+        .await?;
+
+        check_write_permission(&program_id.id, user, &self.db).await?;
+
         Ok(sqlx::query_as!(
             PostgresEvent,
             r#"
@@ -279,6 +400,7 @@ mod tests {
     use crate::data_source::postgres::event::PgEventStorage;
     use crate::data_source::Crud;
     use crate::error::AppError;
+    use crate::jwt::Claims;
     use chrono::{DateTime, Duration, Utc};
     use openadr_wire::event::{EventContent, EventInterval, EventType, EventValuesMap};
     use openadr_wire::interval::IntervalPeriod;
@@ -308,10 +430,16 @@ mod tests {
                 program_id: "program-1".parse().unwrap(),
                 event_name: Some("event-1-name".to_string()),
                 priority: Some(4).into(),
-                targets: Some(TargetMap(vec![TargetEntry {
-                    label: TargetLabel::Group,
-                    values: ["group-1".to_string()],
-                }])),
+                targets: Some(TargetMap(vec![
+                    TargetEntry {
+                        label: TargetLabel::Group,
+                        values: ["group-1".to_string()],
+                    },
+                    TargetEntry {
+                        label: TargetLabel::Private("PRIVATE_LABEL".to_string()),
+                        values: ["private value".to_string()],
+                    },
+                ])),
                 report_descriptors: None,
                 payload_descriptors: None,
                 interval_period: Some(IntervalPeriod {
@@ -364,25 +492,44 @@ mod tests {
         }
     }
 
+    fn event_3() -> Event {
+        Event {
+            id: "event-3".parse().unwrap(),
+            content: EventContent {
+                program_id: "program-3".parse().unwrap(),
+                event_name: Some("event-3-name".to_string()),
+                ..event_2().content
+            },
+            ..event_2()
+        }
+    }
+
     mod get_all {
         use super::*;
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn default_get_all(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let events = repo.retrieve_all(&Default::default()).await.unwrap();
-            assert_eq!(events.len(), 2);
-            assert_eq!(events, vec![event_1(), event_2()]);
+            let mut events = repo
+                .retrieve_all(&Default::default(), &Claims::any_business_user())
+                .await
+                .unwrap();
+            assert_eq!(events.len(), 3);
+            events.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+            assert_eq!(events, vec![event_1(), event_2(), event_3()]);
         }
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn limit_get_all(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let events = repo
-                .retrieve_all(&QueryParams {
-                    limit: 1,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        limit: 1,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
@@ -393,20 +540,25 @@ mod tests {
         async fn skip_get_all(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let events = repo
-                .retrieve_all(&QueryParams {
-                    skip: 1,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 1,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
-            assert_eq!(events.len(), 1);
-            assert_eq!(events, vec![event_2()]);
+            assert_eq!(events.len(), 2);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    skip: 20,
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 20,
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
@@ -417,53 +569,87 @@ mod tests {
             let repo: PgEventStorage = db.into();
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["group-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["group-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_1()]);
 
-            let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Private("SOME_TARGET".to_string())),
-                    target_values: Some(vec!["target-1".to_string()]),
-                    ..Default::default()
-                })
+            let mut events = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Private("SOME_TARGET".to_string())),
+                        target_values: Some(vec!["target-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
-            assert_eq!(events.len(), 1);
-            assert_eq!(events, vec![event_2()]);
+            assert_eq!(events.len(), 2);
+            events.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+            assert_eq!(events, vec![event_2(), event_3()]);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["not-existent".to_string()]),
-                    ..Default::default()
-                })
-                .await
-                .unwrap();
-            assert_eq!(events.len(), 0);
-
-            let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Private("NOT_EXISTENT".to_string())),
-                    target_values: Some(vec!["target-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    target_type: Some(TargetLabel::Group),
-                    target_values: Some(vec!["target-1".to_string()]),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Private("NOT_EXISTENT".to_string())),
+                        target_values: Some(vec!["target-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(events.len(), 0);
+
+            let events = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["target-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(events.len(), 0);
+        }
+
+        #[sqlx::test(fixtures("programs"))]
+        async fn filter_multiple_targets(db: PgPool) {
+            let repo: PgEventStorage = db.into();
+
+            let events = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["private value".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
@@ -474,31 +660,40 @@ mod tests {
             let repo: PgEventStorage = db.into();
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    program_id: Some("program-1".parse().unwrap()),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        program_id: Some("program-1".parse().unwrap()),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_1()]);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    program_id: Some("program-1".parse().unwrap()),
-                    target_type: Some(TargetLabel::Group),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        program_id: Some("program-1".parse().unwrap()),
+                        target_type: Some(TargetLabel::Group),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 1);
             assert_eq!(events, vec![event_1()]);
 
             let events = repo
-                .retrieve_all(&QueryParams {
-                    program_id: Some("not-existent".parse().unwrap()),
-                    ..Default::default()
-                })
+                .retrieve_all(
+                    &QueryParams {
+                        program_id: Some("not-existent".parse().unwrap()),
+                        ..Default::default()
+                    },
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(events.len(), 0);
@@ -511,14 +706,22 @@ mod tests {
         #[sqlx::test(fixtures("programs", "events"))]
         async fn get_existing(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.retrieve(&"event-1".parse().unwrap()).await.unwrap();
+            let event = repo
+                .retrieve(&"event-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event, event_1());
         }
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn get_not_existing(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.retrieve(&"not-existent".parse().unwrap()).await;
+            let event = repo
+                .retrieve(
+                    &"not-existent".parse().unwrap(),
+                    &Claims::any_business_user(),
+                )
+                .await;
             assert!(matches!(event, Err(AppError::NotFound)));
         }
     }
@@ -529,7 +732,10 @@ mod tests {
         #[sqlx::test(fixtures("programs"))]
         async fn add(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.create(event_1().content).await.unwrap();
+            let event = repo
+                .create(event_1().content, &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event.content, event_1().content);
             assert!(event.created_date_time < Utc::now() + Duration::minutes(10));
             assert!(event.created_date_time > Utc::now() - Duration::minutes(10));
@@ -540,7 +746,9 @@ mod tests {
         #[sqlx::test(fixtures("programs", "events"))]
         async fn add_existing_conflict_name(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.create(event_1().content).await;
+            let event = repo
+                .create(event_1().content, &Claims::any_business_user())
+                .await;
             assert!(event.is_ok());
         }
     }
@@ -552,7 +760,11 @@ mod tests {
         async fn updates_modify_time(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let event = repo
-                .update(&"event-1".parse().unwrap(), event_1().content)
+                .update(
+                    &"event-1".parse().unwrap(),
+                    event_1().content,
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(event.content, event_1().content);
@@ -572,11 +784,18 @@ mod tests {
             let mut updated = event_2().content;
             updated.event_name = Some("updated-name".to_string());
             let event = repo
-                .update(&"event-1".parse().unwrap(), updated.clone())
+                .update(
+                    &"event-1".parse().unwrap(),
+                    updated.clone(),
+                    &Claims::any_business_user(),
+                )
                 .await
                 .unwrap();
             assert_eq!(event.content, updated);
-            let event = repo.retrieve(&"event-1".parse().unwrap()).await.unwrap();
+            let event = repo
+                .retrieve(&"event-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event.content, updated);
         }
 
@@ -584,7 +803,11 @@ mod tests {
         async fn update_name_conflict(db: PgPool) {
             let repo: PgEventStorage = db.into();
             let event = repo
-                .update(&"event-1".parse().unwrap(), event_2().content)
+                .update(
+                    &"event-1".parse().unwrap(),
+                    event_2().content,
+                    &Claims::any_business_user(),
+                )
                 .await;
             assert!(event.is_ok());
         }
@@ -596,20 +819,33 @@ mod tests {
         #[sqlx::test(fixtures("programs", "events"))]
         async fn delete_existing(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.delete(&"event-1".parse().unwrap()).await.unwrap();
+            let event = repo
+                .delete(&"event-1".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event, event_1());
 
-            let event = repo.retrieve(&"event-1".parse().unwrap()).await;
+            let event = repo
+                .retrieve(&"event-1".parse().unwrap(), &Claims::any_business_user())
+                .await;
             assert!(matches!(event, Err(AppError::NotFound)));
 
-            let event = repo.retrieve(&"event-2".parse().unwrap()).await.unwrap();
+            let event = repo
+                .retrieve(&"event-2".parse().unwrap(), &Claims::any_business_user())
+                .await
+                .unwrap();
             assert_eq!(event, event_2());
         }
 
         #[sqlx::test(fixtures("programs", "events"))]
         async fn delete_not_existing(db: PgPool) {
             let repo: PgEventStorage = db.into();
-            let event = repo.delete(&"not-existent".parse().unwrap()).await;
+            let event = repo
+                .delete(
+                    &"not-existent".parse().unwrap(),
+                    &Claims::any_business_user(),
+                )
+                .await;
             assert!(matches!(event, Err(AppError::NotFound)));
         }
     }

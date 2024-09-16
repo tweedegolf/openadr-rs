@@ -7,7 +7,5 @@ mod notification;
 mod notification_object;
 mod object_types;
 mod point;
-mod resource;
 mod subscription;
 mod subscription_object_operations_inner;
-mod ven;

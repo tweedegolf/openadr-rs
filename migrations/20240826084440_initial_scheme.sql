@@ -1,3 +1,9 @@
+create table business
+(
+    id text not null
+        constraint business_pk primary key
+);
+
 create table program
 (
     id                     text        not null
@@ -19,7 +25,8 @@ create table program
     binding_events         boolean,
     local_price            boolean,
     payload_descriptors    jsonb,
-    targets                jsonb
+    targets                jsonb,
+    business_id            text references business (id)
 );
 
 create unique index program_program_name_uindex
@@ -74,18 +81,69 @@ create table "user"
             primary key
 );
 
-create table user_roles
-(
-    user_id text not null references "user" (id),
-    role    jsonb not null
-);
-
 create table user_credentials
 (
-    user_id       text not null references "user" (id),
+    user_id       text not null references "user" (id) on delete cascade,
     client_id     text not null
         constraint user_credentials_pk
             primary key,
     client_secret text not null
     -- TODO maybe the credentials require their own role?
-)
+);
+
+create table ven
+(
+    id                     text        not null
+        constraint ven_pk
+            primary key,
+    created_date_time      timestamptz not null,
+    modification_date_time timestamptz not null,
+    ven_name               text        not null,
+    attributes             jsonb,
+    targets                jsonb
+);
+
+create unique index ven_ven_name_uindex
+    on ven (ven_name);
+
+create table user_ven
+(
+    ven_id  text not null references ven (id) on delete cascade,
+    user_id text not null references "user" (id) on delete cascade
+);
+
+create table resource
+(
+    id                     text        not null
+        constraint resource_pk
+            primary key,
+    created_date_time      timestamptz not null,
+    modification_date_time timestamptz not null,
+    resource_name          text        not null,
+    ven_id                 text        not null references ven (id), -- TODO is this actually 'NOT NULL'?
+    attributes             jsonb,
+    targets                jsonb
+
+);
+
+create table ven_program
+(
+    program_id text not null references program (id) on delete cascade,
+    ven_id     text not null references ven (id) on delete cascade,
+    constraint ven_program_pk primary key (program_id, ven_id)
+);
+
+
+create table user_business
+(
+    user_id     text not null references "user" (id) on delete cascade,
+    business_id text references business (id) on delete cascade
+);
+
+-- allow at most one null entry per business, counting as `AnyBusiness`
+create unique index null_test_user_business
+    on user_business (user_id, (business_id is null))
+    where business_id is null;
+
+create unique index uindex_user_business
+    on user_business (user_id, business_id);

@@ -141,8 +141,8 @@ impl Resource {
 /// An object that may be used to request a report from a VEN. See OpenADR REST User Guide for
 /// detailed description of how configure a report request.
 // TODO: replace "-1 means" with proper enum
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportDescriptor {
     /// Enumerated or private string signifying the nature of values.
