@@ -1,12 +1,13 @@
 use crate::api::resource::QueryParams;
 use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
-use crate::data_source::{Crud, ResourceCrud};
+use crate::data_source::{ResourceCrud, VenScopedCrud};
 use crate::error::AppError;
 use crate::jwt::Claims;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
 use openadr_wire::resource::{Resource, ResourceContent, ResourceId};
 use openadr_wire::target::TargetLabel;
+use openadr_wire::ven::VenId;
 use sqlx::PgPool;
 use tracing::{error, trace};
 
@@ -24,7 +25,7 @@ impl From<PgPool> for PgResourceStorage {
 }
 
 #[derive(Debug)]
-struct PostgresResource {
+pub(crate) struct PostgresResource {
     id: String,
     created_date_time: DateTime<Utc>,
     modification_date_time: DateTime<Utc>,
@@ -63,10 +64,10 @@ impl TryFrom<PostgresResource> for Resource {
             id: value.id.parse()?,
             created_date_time: value.created_date_time,
             modification_date_time: value.modification_date_time,
+            ven_id: value.ven_id.parse()?,
             content: ResourceContent {
                 object_type: Default::default(),
                 resource_name: value.resource_name,
-                ven_id: Some(value.ven_id),
                 targets,
                 attributes,
             },
@@ -113,7 +114,7 @@ impl<'a> From<&'a QueryParams> for PostgresFilter<'a> {
 }
 
 #[async_trait]
-impl Crud for PgResourceStorage {
+impl VenScopedCrud for PgResourceStorage {
     type Type = Resource;
     type Id = ResourceId;
     type NewType = ResourceContent;
@@ -124,6 +125,7 @@ impl Crud for PgResourceStorage {
     async fn create(
         &self,
         new: Self::NewType,
+        ven_id: VenId,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
         let resource: Resource = sqlx::query_as!(
@@ -142,7 +144,7 @@ impl Crud for PgResourceStorage {
             RETURNING *
             "#,
             new.resource_name,
-            new.ven_id,
+            ven_id.as_str(),
             to_json_value(new.attributes)?,
             to_json_value(new.targets)?,
         )
@@ -156,6 +158,7 @@ impl Crud for PgResourceStorage {
     async fn retrieve(
         &self,
         id: &Self::Id,
+        ven_id: VenId,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
         let resource = sqlx::query_as!(
@@ -170,9 +173,10 @@ impl Crud for PgResourceStorage {
                 attributes,
                 targets
             FROM resource
-            WHERE id = $1
+            WHERE id = $1 AND ven_id = $2
             "#,
             id.as_str(),
+            ven_id.as_str(),
         )
         .fetch_one(&self.db)
         .await?
@@ -183,6 +187,7 @@ impl Crud for PgResourceStorage {
 
     async fn retrieve_all(
         &self,
+        ven_id: VenId,
         filter: &Self::Filter,
         _user: &Self::PermissionFilter,
     ) -> Result<Vec<Self::Type>, Self::Error> {
@@ -201,10 +206,12 @@ impl Crud for PgResourceStorage {
                 r.attributes,
                 r.targets
             FROM resource r
-            WHERE ($1::text[] IS NULL OR r.resource_name = ANY($1))
-              AND ($2::jsonb = '[]'::jsonb OR $2::jsonb <@ r.targets)
-            OFFSET $3 LIMIT $4
+            WHERE r.ven_id = $1
+                AND ($2::text[] IS NULL OR r.resource_name = ANY($2))
+                AND ($3::jsonb = '[]'::jsonb OR $3::jsonb <@ r.targets)
+            OFFSET $4 LIMIT $5
             "#,
+            ven_id.as_str(),
             pg_filter.resource_names,
             serde_json::to_value(pg_filter.targets)
                 .map_err(AppError::SerdeJsonInternalServerError)?,
@@ -221,6 +228,7 @@ impl Crud for PgResourceStorage {
     async fn update(
         &self,
         id: &Self::Id,
+        ven_id: VenId,
         new: Self::NewType,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
@@ -229,16 +237,17 @@ impl Crud for PgResourceStorage {
             r#"
             UPDATE resource
             SET modification_date_time = now(),
-                resource_name = $2,
-                ven_id = $3,
-                attributes = $4,
-                targets = $5
-            WHERE id = $1
+                resource_name = $3,
+                ven_id = $4,
+                attributes = $5,
+                targets = $6
+            WHERE id = $1 AND ven_id = $2
             RETURNING *
             "#,
             id.as_str(),
+            ven_id.as_str(),
             new.resource_name,
-            new.ven_id,
+            ven_id.as_str(),
             to_json_value(new.attributes)?,
             to_json_value(new.targets)?
         )
@@ -252,19 +261,50 @@ impl Crud for PgResourceStorage {
     async fn delete(
         &self,
         id: &Self::Id,
+        ven_id: VenId,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
         Ok(sqlx::query_as!(
             PostgresResource,
             r#"
             DELETE FROM resource r
-            WHERE r.id = $1
+            WHERE r.id = $1 AND r.ven_id = $2
             RETURNING r.*
             "#,
             id.as_str(),
+            ven_id.as_str(),
         )
         .fetch_one(&self.db)
         .await?
         .try_into()?)
+    }
+}
+
+impl PgResourceStorage {
+    pub(crate) async fn retrieve_by_ven(
+        db: &PgPool,
+        ven_id: &VenId,
+    ) -> Result<Vec<Resource>, AppError> {
+        sqlx::query_as!(
+            PostgresResource,
+            r#"
+            SELECT
+                id,
+                created_date_time,
+                modification_date_time,
+                resource_name,
+                ven_id,
+                attributes,
+                targets
+            FROM resource
+            WHERE ven_id = $1
+            "#,
+            ven_id.as_str(),
+        )
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<_, _>>()
     }
 }

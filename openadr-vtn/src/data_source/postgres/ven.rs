@@ -10,6 +10,8 @@ use openadr_wire::ven::{Ven, VenContent, VenId};
 use sqlx::PgPool;
 use tracing::{error, trace};
 
+use super::resource::PgResourceStorage;
+
 #[async_trait]
 impl VenCrud for PgVenStorage {}
 
@@ -138,13 +140,7 @@ impl Crud for PgVenStorage {
                 targets
             )
             VALUES (gen_random_uuid(), now(), now(), $1, $2, $3)
-            RETURNING
-                id,
-                created_date_time,
-                modification_date_time,
-                ven_name,
-                attributes,
-                targets
+            RETURNING *
             "#,
             new.ven_name,
             to_json_value(new.attributes)?,
@@ -162,16 +158,10 @@ impl Crud for PgVenStorage {
         id: &Self::Id,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
-        Ok(sqlx::query_as!(
+        let mut ven: Ven = sqlx::query_as!(
             PostgresVen,
             r#"
-            SELECT
-                id,
-                created_date_time,
-                modification_date_time,
-                ven_name,
-                attributes,
-                targets
+            SELECT *
             FROM ven
             WHERE id = $1
             "#,
@@ -179,7 +169,11 @@ impl Crud for PgVenStorage {
         )
         .fetch_one(&self.db)
         .await?
-        .try_into()?)
+        .try_into()?;
+
+        ven.content.resources = Some(PgResourceStorage::retrieve_by_ven(&self.db, id).await?);
+
+        Ok(ven)
     }
 
     async fn retrieve_all(
@@ -227,7 +221,7 @@ impl Crud for PgVenStorage {
         new: Self::NewType,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
-        let ven: Ven = sqlx::query_as!(
+        let mut ven: Ven = sqlx::query_as!(
             PostgresVen,
             r#"
             UPDATE ven
@@ -236,13 +230,7 @@ impl Crud for PgVenStorage {
                 attributes = $3,
                 targets = $4
             WHERE id = $1
-            RETURNING
-                id,
-                created_date_time,
-                modification_date_time,
-                ven_name,
-                attributes,
-                targets
+            RETURNING *
             "#,
             id.as_str(),
             new.ven_name,
@@ -253,6 +241,8 @@ impl Crud for PgVenStorage {
         .await?
         .try_into()?;
 
+        ven.content.resources = Some(PgResourceStorage::retrieve_by_ven(&self.db, id).await?);
+
         Ok(ven)
     }
 
@@ -261,18 +251,21 @@ impl Crud for PgVenStorage {
         id: &Self::Id,
         _user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        if !PgResourceStorage::retrieve_by_ven(&self.db, id)
+            .await?
+            .is_empty()
+        {
+            Err(AppError::Forbidden(
+                "Cannot delete VEN with associated resources",
+            ))?
+        }
+
         Ok(sqlx::query_as!(
             PostgresVen,
             r#"
-            DELETE FROM ven v
-            WHERE v.id = $1
-            RETURNING
-                v.id,
-                v.created_date_time,
-                v.modification_date_time,
-                v.ven_name,
-                v.attributes,
-                v.targets
+            DELETE FROM ven
+            WHERE id = $1
+            RETURNING *
             "#,
             id.as_str(),
         )

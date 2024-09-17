@@ -57,12 +57,12 @@ impl AppState {
                 get(ven::get).put(ven::edit).delete(ven::delete),
             )
             .route(
-                "/vens:ven_id/resources",
-                get(resource::get_all).post(ven::add),
+                "/vens/:ven_id/resources",
+                get(resource::get_all).post(resource::add),
             )
             .route(
-                "/vens/:id",
-                get(ven::get).put(ven::edit).delete(ven::delete),
+                "/vens/:ven_id/resources/:id",
+                get(resource::get).put(resource::edit).delete(resource::delete),
             )
             .route("/auth/register", post(auth::register))
             .route("/auth/token", post(auth::token))

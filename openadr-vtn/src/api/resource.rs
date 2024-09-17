@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::Json;
+use openadr_wire::ven::VenId;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tracing::{info, trace};
@@ -17,22 +18,26 @@ use crate::jwt::{User, VenManagerUser};
 
 pub async fn get_all(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
+    Path(ven_id): Path<VenId>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
     VenManagerUser(user): VenManagerUser,
 ) -> AppResponse<Vec<Resource>> {
     trace!(?query_params);
 
-    let resources = resource_source.retrieve_all(&query_params, &user).await?;
+    let resources = resource_source
+        .retrieve_all(ven_id, &query_params, &user)
+        .await?;
 
     Ok(Json(resources))
 }
 
 pub async fn get(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
+    Path(ven_id): Path<VenId>,
     Path(id): Path<ResourceId>,
     User(user): User,
 ) -> AppResponse<Resource> {
-    let ven = resource_source.retrieve(&id, &user).await?;
+    let ven = resource_source.retrieve(&id, ven_id, &user).await?;
 
     Ok(Json(ven))
 }
@@ -40,20 +45,22 @@ pub async fn get(
 pub async fn add(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     VenManagerUser(user): VenManagerUser,
+    Path(ven_id): Path<VenId>,
     ValidatedJson(new_resource): ValidatedJson<ResourceContent>,
 ) -> Result<(StatusCode, Json<Resource>), AppError> {
-    let ven = resource_source.create(new_resource, &user).await?;
+    let ven = resource_source.create(new_resource, ven_id, &user).await?;
 
     Ok((StatusCode::CREATED, Json(ven)))
 }
 
 pub async fn edit(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
+    Path(ven_id): Path<VenId>,
     Path(id): Path<ResourceId>,
     VenManagerUser(user): VenManagerUser,
     ValidatedJson(content): ValidatedJson<ResourceContent>,
 ) -> AppResponse<Resource> {
-    let resource = resource_source.update(&id, content, &user).await?;
+    let resource = resource_source.update(&id, ven_id, content, &user).await?;
 
     info!(%resource.id, resource.resource_name=resource.content.resource_name, "resource updated");
 
@@ -62,10 +69,11 @@ pub async fn edit(
 
 pub async fn delete(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
+    Path(ven_id): Path<VenId>,
     Path(id): Path<ResourceId>,
     VenManagerUser(user): VenManagerUser,
 ) -> AppResponse<Resource> {
-    let resource = resource_source.delete(&id, &user).await?;
+    let resource = resource_source.delete(&id, ven_id, &user).await?;
     info!(%id, "deleted resource");
     Ok(Json(resource))
 }

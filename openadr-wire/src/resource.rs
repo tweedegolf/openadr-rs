@@ -1,11 +1,13 @@
-use crate::values_map::ValuesMap;
-use crate::{Identifier, IdentifierError};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use std::fmt::Display;
 use std::str::FromStr;
 use validator::Validate;
+
+use crate::values_map::ValuesMap;
+use crate::ven::VenId;
+use crate::{Identifier, IdentifierError};
 
 /// A resource is an energy device or system subject to control by a VEN.
 #[skip_serializing_none]
@@ -20,7 +22,9 @@ pub struct Resource {
     /// datetime in ISO 8601 format
     #[serde(with = "crate::serde_rfc3339")]
     pub modification_date_time: DateTime<Utc>,
-
+    /// URL safe VTN assigned object ID.
+    #[serde(rename = "venID")]
+    pub ven_id: VenId,
     #[serde(flatten)]
     #[validate(nested)]
     pub content: ResourceContent,
@@ -35,9 +39,6 @@ pub struct ResourceContent {
     /// User generated identifier, resource may be configured with identifier out-of-band.
     #[serde(deserialize_with = "crate::string_within_range_inclusive::<1, 128, _>")]
     pub resource_name: String,
-    /// URL safe VTN assigned object ID.
-    #[serde(rename = "venID")]
-    pub ven_id: Option<String>,
     /// A list of valuesMap objects describing attributes.
     pub attributes: Option<Vec<ValuesMap>>,
     /// A list of valuesMap objects describing target criteria.

@@ -55,6 +55,48 @@ pub trait Crud: Send + Sync + 'static {
     ) -> Result<Self::Type, Self::Error>;
 }
 
+#[async_trait]
+pub trait VenScopedCrud: Send + Sync + 'static {
+    type Type;
+    type Id;
+    type NewType;
+    type Error;
+    type Filter;
+    type PermissionFilter;
+
+    async fn create(
+        &self,
+        new: Self::NewType,
+        ven_id: VenId,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error>;
+    async fn retrieve(
+        &self,
+        id: &Self::Id,
+        ven_id: VenId,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error>;
+    async fn retrieve_all(
+        &self,
+        ven_id: VenId,
+        filter: &Self::Filter,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Vec<Self::Type>, Self::Error>;
+    async fn update(
+        &self,
+        id: &Self::Id,
+        ven_id: VenId,
+        new: Self::NewType,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error>;
+    async fn delete(
+        &self,
+        id: &Self::Id,
+        ven_id: VenId,
+        permission_filter: &Self::PermissionFilter,
+    ) -> Result<Self::Type, Self::Error>;
+}
+
 pub trait ProgramCrud:
     Crud<
     Type = Program,
@@ -102,7 +144,7 @@ pub trait VenCrud:
 }
 
 pub trait ResourceCrud:
-    Crud<
+    VenScopedCrud<
     Type = Resource,
     Id = ResourceId,
     NewType = ResourceContent,
