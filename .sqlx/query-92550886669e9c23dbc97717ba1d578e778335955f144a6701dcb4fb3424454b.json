@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE resource\n            SET modification_date_time = now(),\n                resource_name = $2,\n                ven_id = $3,\n                attributes = $4,\n                targets = $5\n            WHERE id = $1\n            RETURNING *\n            ",
+  "query": "\n            SELECT\n                id,\n                created_date_time,\n                modification_date_time,\n                resource_name,\n                ven_id,\n                attributes,\n                targets\n            FROM resource\n            WHERE ven_id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -41,11 +41,7 @@
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Text",
-        "Text",
-        "Jsonb",
-        "Jsonb"
+        "Text"
       ]
     },
     "nullable": [
@@ -58,5 +54,5 @@
       true
     ]
   },
-  "hash": "4feeb8a9353ec05413b798b7ba9ece137afea8c0f867618e9faeabdb0c5ddb55"
+  "hash": "92550886669e9c23dbc97717ba1d578e778335955f144a6701dcb4fb3424454b"
 }

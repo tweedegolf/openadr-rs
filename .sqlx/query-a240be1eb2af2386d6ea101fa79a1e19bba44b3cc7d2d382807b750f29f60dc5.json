@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE ven\n            SET modification_date_time = now(),\n                ven_name = $2,\n                attributes = $3,\n                targets = $4\n            WHERE id = $1\n            RETURNING\n                id,\n                created_date_time,\n                modification_date_time,\n                ven_name,\n                attributes,\n                targets\n            ",
+  "query": "\n            DELETE FROM ven\n            WHERE id = $1\n            RETURNING *\n            ",
   "describe": {
     "columns": [
       {
@@ -36,10 +36,7 @@
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Text",
-        "Jsonb",
-        "Jsonb"
+        "Text"
       ]
     },
     "nullable": [
@@ -51,5 +48,5 @@
       true
     ]
   },
-  "hash": "b79f09fdb4ddf9909a8bf2851c9f68ddeeb7844bb4b639adede34779435d5e97"
+  "hash": "a240be1eb2af2386d6ea101fa79a1e19bba44b3cc7d2d382807b750f29f60dc5"
 }
