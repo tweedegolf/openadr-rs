@@ -2,7 +2,8 @@ use crate::data_source::postgres::event::PgEventStorage;
 use crate::data_source::postgres::program::PgProgramStorage;
 use crate::data_source::postgres::report::PgReportStorage;
 use crate::data_source::postgres::user::PgAuthSource;
-use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
+use crate::data_source::postgres::ven::PgVenStorage;
+use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud, VenCrud};
 use crate::error::AppError;
 use crate::jwt::{BusinessIds, Claims};
 use dotenvy::dotenv;
@@ -16,6 +17,7 @@ mod event;
 mod program;
 mod report;
 mod user;
+mod ven;
 
 #[derive(Clone)]
 pub struct PostgresStorage {
@@ -33,6 +35,10 @@ impl DataSource for PostgresStorage {
 
     fn events(&self) -> Arc<dyn EventCrud> {
         Arc::<PgEventStorage>::new(self.db.clone().into())
+    }
+
+    fn vens(&self) -> Arc<dyn VenCrud> {
+        Arc::<PgVenStorage>::new(self.db.clone().into())
     }
 
     fn auth(&self) -> Arc<dyn AuthSource> {
