@@ -1,16 +1,20 @@
 //! Types used for the `report/` endpoint
 
-use crate::event::EventId;
-use crate::interval::{Interval, IntervalPeriod};
-use crate::program::ProgramId;
-use crate::target::TargetMap;
-use crate::values_map::Value;
-use crate::{Identifier, IdentifierError, Unit};
+use crate::{
+    event::EventId,
+    interval::{Interval, IntervalPeriod},
+    program::ProgramId,
+    target::TargetMap,
+    values_map::Value,
+    Identifier, IdentifierError, Unit,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use std::fmt::{Display, Formatter};
-use std::str::FromStr;
+use std::{
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 use validator::{Validate, ValidateRange};
 
 /// report object.
@@ -291,8 +295,10 @@ pub struct ReportValuesMap {
 
 #[cfg(test)]
 mod tests {
-    use crate::values_map::{Value, ValueType, ValuesMap};
-    use crate::Duration;
+    use crate::{
+        values_map::{Value, ValueType, ValuesMap},
+        Duration,
+    };
 
     use super::*;
 

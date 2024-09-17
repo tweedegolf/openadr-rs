@@ -1,7 +1,9 @@
 use crate::error::AppError;
-use axum::extract::rejection::JsonRejection;
-use axum::extract::{FromRequest, FromRequestParts, Request};
-use axum::{async_trait, Json};
+use axum::{
+    async_trait,
+    extract::{rejection::JsonRejection, FromRequest, FromRequestParts, Request},
+    Json,
+};
 use axum_extra::extract::{Query, QueryRejection};
 use serde::de::DeserializeOwned;
 use validator::Validate;
@@ -58,8 +60,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::jwt::AuthRole;
-    use crate::state::AppState;
+    use crate::{jwt::AuthRole, state::AppState};
 
     #[allow(dead_code)]
     pub(crate) fn jwt_test_token(state: &AppState, roles: Vec<AuthRole>) -> String {

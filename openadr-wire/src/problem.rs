@@ -39,8 +39,7 @@ pub struct Problem {
 mod status_code_serialization {
     use super::*;
 
-    use serde::de::Unexpected;
-    use serde::{Deserializer, Serializer};
+    use serde::{de::Unexpected, Deserializer, Serializer};
 
     pub fn serialize<S>(code: &StatusCode, serializer: S) -> Result<S::Ok, S::Error>
     where

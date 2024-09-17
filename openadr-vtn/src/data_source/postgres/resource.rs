@@ -1,13 +1,19 @@
-use crate::api::resource::QueryParams;
-use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
-use crate::data_source::{ResourceCrud, VenScopedCrud};
-use crate::error::AppError;
-use crate::jwt::Claims;
+use crate::{
+    api::resource::QueryParams,
+    data_source::{
+        postgres::{to_json_value, PgTargetsFilter},
+        ResourceCrud, VenScopedCrud,
+    },
+    error::AppError,
+    jwt::Claims,
+};
 use axum::async_trait;
 use chrono::{DateTime, Utc};
-use openadr_wire::resource::{Resource, ResourceContent, ResourceId};
-use openadr_wire::target::TargetLabel;
-use openadr_wire::ven::VenId;
+use openadr_wire::{
+    resource::{Resource, ResourceContent, ResourceId},
+    target::TargetLabel,
+    ven::VenId,
+};
 use sqlx::PgPool;
 use tracing::{error, trace};
 
@@ -300,6 +306,33 @@ impl PgResourceStorage {
             WHERE ven_id = $1
             "#,
             ven_id.as_str(),
+        )
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<_, _>>()
+    }
+
+    pub(crate) async fn retrieve_by_vens(
+        db: &PgPool,
+        ven_ids: &[String],
+    ) -> Result<Vec<Resource>, AppError> {
+        sqlx::query_as!(
+            PostgresResource,
+            r#"
+            SELECT
+                id,
+                created_date_time,
+                modification_date_time,
+                resource_name,
+                ven_id,
+                attributes,
+                targets
+            FROM resource
+            WHERE ven_id = ANY($1)
+            "#,
+            ven_ids,
         )
         .fetch_all(db)
         .await?

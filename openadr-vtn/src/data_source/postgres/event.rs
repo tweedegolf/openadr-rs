@@ -1,13 +1,19 @@
-use crate::api::event::QueryParams;
-use crate::data_source::postgres::{extract_business_ids, to_json_value, PgId, PgTargetsFilter};
-use crate::data_source::{Crud, EventCrud};
-use crate::error::AppError;
-use crate::jwt::{BusinessIds, Claims};
+use crate::{
+    api::event::QueryParams,
+    data_source::{
+        postgres::{extract_business_ids, to_json_value, PgId, PgTargetsFilter},
+        Crud, EventCrud,
+    },
+    error::AppError,
+    jwt::{BusinessIds, Claims},
+};
 use axum::async_trait;
 use chrono::{DateTime, Utc};
-use openadr_wire::event::{EventContent, EventId, Priority};
-use openadr_wire::target::TargetLabel;
-use openadr_wire::Event;
+use openadr_wire::{
+    event::{EventContent, EventId, Priority},
+    target::TargetLabel,
+    Event,
+};
 use sqlx::PgPool;
 use std::str::FromStr;
 use tracing::{error, trace};
@@ -396,17 +402,20 @@ impl Crud for PgEventStorage {
 mod tests {
     use sqlx::PgPool;
 
-    use crate::api::event::QueryParams;
-    use crate::data_source::postgres::event::PgEventStorage;
-    use crate::data_source::Crud;
-    use crate::error::AppError;
-    use crate::jwt::Claims;
+    use crate::{
+        api::event::QueryParams,
+        data_source::{postgres::event::PgEventStorage, Crud},
+        error::AppError,
+        jwt::Claims,
+    };
     use chrono::{DateTime, Duration, Utc};
-    use openadr_wire::event::{EventContent, EventInterval, EventType, EventValuesMap};
-    use openadr_wire::interval::IntervalPeriod;
-    use openadr_wire::target::{TargetEntry, TargetLabel, TargetMap};
-    use openadr_wire::values_map::Value;
-    use openadr_wire::Event;
+    use openadr_wire::{
+        event::{EventContent, EventInterval, EventType, EventValuesMap},
+        interval::IntervalPeriod,
+        target::{TargetEntry, TargetLabel, TargetMap},
+        values_map::Value,
+        Event,
+    };
 
     impl Default for QueryParams {
         fn default() -> Self {

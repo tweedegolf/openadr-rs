@@ -28,12 +28,7 @@ impl AppState {
         use axum::routing::{get, post};
         use tower_http::trace::TraceLayer;
 
-        use crate::api::auth;
-        use crate::api::event;
-        use crate::api::program;
-        use crate::api::report;
-        use crate::api::resource;
-        use crate::api::ven;
+        use crate::api::{auth, event, program, report, resource, ven};
 
         axum::Router::new()
             .route("/programs", get(program::get_all).post(program::add))
@@ -62,7 +57,9 @@ impl AppState {
             )
             .route(
                 "/vens/:ven_id/resources/:id",
-                get(resource::get).put(resource::edit).delete(resource::delete),
+                get(resource::get)
+                    .put(resource::edit)
+                    .delete(resource::delete),
             )
             .route("/auth/register", post(auth::register))
             .route("/auth/token", post(auth::token))

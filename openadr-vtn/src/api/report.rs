@@ -1,21 +1,27 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
-use axum::http::StatusCode;
-use axum::Json;
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{info, trace};
 use validator::Validate;
 
-use openadr_wire::event::EventId;
-use openadr_wire::program::ProgramId;
-use openadr_wire::report::{ReportContent, ReportId};
-use openadr_wire::Report;
+use openadr_wire::{
+    event::EventId,
+    program::ProgramId,
+    report::{ReportContent, ReportId},
+    Report,
+};
 
-use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
-use crate::data_source::ReportCrud;
-use crate::error::AppError;
-use crate::jwt::{BusinessUser, User, VENUser};
+use crate::{
+    api::{AppResponse, ValidatedJson, ValidatedQuery},
+    data_source::ReportCrud,
+    error::AppError,
+    jwt::{BusinessUser, User, VENUser},
+};
 
 pub async fn get_all(
     State(report_source): State<Arc<dyn ReportCrud>>,

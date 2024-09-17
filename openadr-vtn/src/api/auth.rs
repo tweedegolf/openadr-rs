@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use axum::http::StatusCode;
 use axum::{
     extract::{Form, State},
-    http::Response,
+    http::{Response, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -14,9 +13,7 @@ use axum_extra::{
 use openadr_wire::oauth::{OAuthError, OAuthErrorType};
 use reqwest::header;
 
-use crate::data_source::AuthSource;
-use crate::jwt::JwtManager;
-use crate::state::AppState;
+use crate::{data_source::AuthSource, jwt::JwtManager, state::AppState};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct AccessTokenRequest {

@@ -1,22 +1,27 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
-use axum::http::StatusCode;
-use axum::Json;
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
 use serde::Deserialize;
 use tracing::{info, trace};
 use validator::{Validate, ValidationError};
 
-use openadr_wire::event::EventContent;
-use openadr_wire::event::EventId;
-use openadr_wire::program::ProgramId;
-use openadr_wire::target::TargetLabel;
-use openadr_wire::Event;
+use openadr_wire::{
+    event::{EventContent, EventId},
+    program::ProgramId,
+    target::TargetLabel,
+    Event,
+};
 
-use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
-use crate::data_source::EventCrud;
-use crate::error::AppError;
-use crate::jwt::{BusinessUser, User};
+use crate::{
+    api::{AppResponse, ValidatedJson, ValidatedQuery},
+    data_source::EventCrud,
+    error::AppError,
+    jwt::{BusinessUser, User},
+};
 
 pub async fn get_all(
     State(event_source): State<Arc<dyn EventCrud>>,
@@ -574,7 +579,7 @@ mod test {
             assert_eq!(response.status(), StatusCode::OK);
         }
 
-        #[sqlx::test(fixtures("users", "programs", "business", "events", "vens"))]
+        #[sqlx::test(fixtures("users", "programs", "business", "events", "vens", "vens-programs"))]
         async fn vens_can_read_event_in_assigned_program_only(db: PgPool) {
             let (state, _) = state_with_events(vec![], db).await;
             let mut app = state.clone().into_router();
@@ -608,7 +613,7 @@ mod test {
             assert_eq!(response.status(), StatusCode::NOT_FOUND);
         }
 
-        #[sqlx::test(fixtures("users", "programs", "business", "events", "vens"))]
+        #[sqlx::test(fixtures("users", "programs", "business", "events", "vens", "vens-programs"))]
         async fn vens_event_list_assigned_program_only(db: PgPool) {
             let (state, _) = state_with_events(vec![], db).await;
             let mut app = state.clone().into_router();
@@ -649,7 +654,7 @@ mod test {
             assert_eq!(events.len(), 0);
         }
 
-        #[sqlx::test(fixtures("users", "programs", "business", "events", "vens"))]
+        #[sqlx::test(fixtures("users", "programs", "business", "events", "vens", "vens-programs"))]
         async fn business_can_list_events_in_own_program_only(db: PgPool) {
             let (state, _) = state_with_events(vec![], db).await;
             let mut app = state.clone().into_router();
@@ -700,7 +705,7 @@ mod test {
             assert_eq!(events.len(), 3);
         }
 
-        #[sqlx::test(fixtures("users", "programs", "events", "vens"))]
+        #[sqlx::test(fixtures("users", "programs", "events", "vens", "vens-programs"))]
         async fn ven_cannot_write_event(db: PgPool) {
             let (state, _) = state_with_events(vec![], db).await;
             let mut app = state.clone().into_router();

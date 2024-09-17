@@ -1,12 +1,18 @@
-use crate::api::ven::QueryParams;
-use crate::data_source::postgres::{to_json_value, PgTargetsFilter};
-use crate::data_source::{Crud, VenCrud};
-use crate::error::AppError;
-use crate::jwt::Claims;
+use crate::{
+    api::ven::QueryParams,
+    data_source::{
+        postgres::{to_json_value, PgTargetsFilter},
+        Crud, VenCrud,
+    },
+    error::AppError,
+    jwt::Claims,
+};
 use axum::async_trait;
 use chrono::{DateTime, Utc};
-use openadr_wire::target::TargetLabel;
-use openadr_wire::ven::{Ven, VenContent, VenId};
+use openadr_wire::{
+    target::TargetLabel,
+    ven::{Ven, VenContent, VenId},
+};
 use sqlx::PgPool;
 use tracing::{error, trace};
 
@@ -184,7 +190,7 @@ impl Crud for PgVenStorage {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
 
-        Ok(sqlx::query_as!(
+        let mut vens: Vec<Ven> = sqlx::query_as!(
             PostgresVen,
             r#"
             SELECT
@@ -212,7 +218,25 @@ impl Crud for PgVenStorage {
         .await?
         .into_iter()
         .map(TryInto::try_into)
-        .collect::<Result<_, _>>()?)
+        .collect::<Result<_, _>>()?;
+
+        let ven_ids: Vec<String> = vens.iter().map(|v| v.id.to_string()).collect();
+        let resources = PgResourceStorage::retrieve_by_vens(&self.db, &ven_ids).await?;
+
+        for ven in &mut vens {
+            ven.content.resources = Some(vec![]);
+
+            for resource in &resources {
+                if resource.ven_id == ven.id {
+                    ven.content
+                        .resources
+                        .get_or_insert_with(Vec::new)
+                        .push(resource.clone());
+                }
+            }
+        }
+
+        Ok(vens)
     }
 
     async fn update(
@@ -260,7 +284,7 @@ impl Crud for PgVenStorage {
             ))?
         }
 
-        Ok(sqlx::query_as!(
+        let mut ven: Ven = sqlx::query_as!(
             PostgresVen,
             r#"
             DELETE FROM ven
@@ -271,6 +295,334 @@ impl Crud for PgVenStorage {
         )
         .fetch_one(&self.db)
         .await?
-        .try_into()?)
+        .try_into()?;
+
+        ven.content.resources = Some(vec![]);
+
+        Ok(ven)
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "live-db-test")]
+mod tests {
+    use crate::{
+        api::ven::QueryParams,
+        data_source::{postgres::ven::PgVenStorage, Crud},
+        error::AppError,
+        jwt::Claims,
+    };
+    use openadr_wire::{
+        values_map::{Value, ValueType, ValuesMap},
+        ven::{Ven, VenContent},
+    };
+    use sqlx::PgPool;
+
+    impl Default for QueryParams {
+        fn default() -> Self {
+            Self {
+                target_type: None,
+                target_values: None,
+                skip: 0,
+                limit: 50,
+            }
+        }
+    }
+
+    fn ven_1() -> Ven {
+        Ven {
+            id: "ven-1".parse().unwrap(),
+            created_date_time: "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+            modification_date_time: "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+            content: VenContent {
+                object_type: Default::default(),
+                ven_name: "ven-1-name".to_string(),
+                targets: Some(vec![
+                    ValuesMap {
+                        value_type: ValueType("GROUP".into()),
+                        values: vec![Value::String("group-1".into())],
+                    },
+                    ValuesMap {
+                        value_type: ValueType("PRIVATE_LABEL".into()),
+                        values: vec![Value::String("private value".into())],
+                    },
+                ]),
+                attributes: None,
+                resources: Some(vec![]),
+            },
+        }
+    }
+
+    fn ven_2() -> Ven {
+        Ven {
+            id: "ven-2".parse().unwrap(),
+            created_date_time: "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+            modification_date_time: "2024-07-25 08:31:10.776000 +00:00".parse().unwrap(),
+            content: VenContent {
+                object_type: Default::default(),
+                ven_name: "ven-2-name".to_string(),
+                targets: None,
+                attributes: None,
+                resources: Some(vec![]),
+            },
+        }
+    }
+
+    mod get_all {
+        use crate::data_source::postgres::ven::PgVenStorage;
+
+        use super::*;
+        use openadr_wire::target::TargetLabel;
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn default_get_all(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+            let mut vens = repo
+                .retrieve_all(&Default::default(), &Claims::ven_manager())
+                .await
+                .unwrap();
+            assert_eq!(vens.len(), 2);
+            vens.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+            assert_eq!(vens, vec![ven_1(), ven_2()]);
+        }
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn limit_get_all(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+            let vens = repo
+                .retrieve_all(
+                    &QueryParams {
+                        limit: 1,
+                        ..Default::default()
+                    },
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(vens.len(), 1);
+        }
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn skip_get_all(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+            let vens = repo
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 1,
+                        ..Default::default()
+                    },
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(vens.len(), 1);
+
+            let vens = repo
+                .retrieve_all(
+                    &QueryParams {
+                        skip: 2,
+                        ..Default::default()
+                    },
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(vens.len(), 0);
+        }
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn filter_target_get_all(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+
+            let vens = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["group-1".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(vens.len(), 1);
+
+            let vens = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::Group),
+                        target_values: Some(vec!["not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(vens.len(), 0);
+
+            let vens = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::VENName),
+                        target_values: Some(vec!["ven-2-name".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(vens.len(), 1);
+            assert_eq!(vens, vec![ven_2()]);
+
+            let vens = repo
+                .retrieve_all(
+                    &QueryParams {
+                        target_type: Some(TargetLabel::VENName),
+                        target_values: Some(vec!["ven-not-existent".to_string()]),
+                        ..Default::default()
+                    },
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(vens.len(), 0);
+        }
+    }
+
+    mod get {
+        use super::*;
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn get_existing(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+
+            let ven = repo
+                .retrieve(&"ven-1".parse().unwrap(), &Claims::ven_manager())
+                .await
+                .unwrap();
+            assert_eq!(ven, ven_1());
+        }
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn get_not_existent(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+            let ven = repo
+                .retrieve(&"ven-not-existent".parse().unwrap(), &Claims::ven_manager())
+                .await;
+
+            assert!(matches!(ven, Err(AppError::NotFound)));
+        }
+    }
+
+    mod add {
+        use super::*;
+        use chrono::{Duration, Utc};
+
+        #[sqlx::test]
+        async fn add(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+
+            let ven = repo
+                .create(ven_1().content, &Claims::ven_manager())
+                .await
+                .unwrap();
+            assert!(ven.created_date_time < Utc::now() + Duration::minutes(10));
+            assert!(ven.created_date_time > Utc::now() - Duration::minutes(10));
+            assert!(ven.modification_date_time < Utc::now() + Duration::minutes(10));
+            assert!(ven.modification_date_time > Utc::now() - Duration::minutes(10));
+        }
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn add_existing_name(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+
+            let ven = repo.create(ven_1().content, &Claims::ven_manager()).await;
+            assert!(matches!(ven, Err(AppError::Conflict(_, _))));
+        }
+    }
+
+    mod modify {
+        use super::*;
+        use chrono::{DateTime, Duration, Utc};
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn updates_modify_time(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+            let ven = repo
+                .update(
+                    &"ven-1".parse().unwrap(),
+                    ven_1().content,
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(ven.content, ven_1().content);
+            assert_eq!(
+                ven.created_date_time,
+                "2024-07-25 08:31:10.776000 +00:00"
+                    .parse::<DateTime<Utc>>()
+                    .unwrap()
+            );
+            assert!(ven.modification_date_time < Utc::now() + Duration::minutes(10));
+            assert!(ven.modification_date_time > Utc::now() - Duration::minutes(10));
+        }
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn update(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+            let mut updated = ven_2().content;
+            updated.ven_name = "updated_name".parse().unwrap();
+
+            let ven = repo
+                .update(
+                    &"ven-1".parse().unwrap(),
+                    updated.clone(),
+                    &Claims::ven_manager(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(ven.content, updated);
+            let ven = repo
+                .retrieve(&"ven-1".parse().unwrap(), &Claims::ven_manager())
+                .await
+                .unwrap();
+            assert_eq!(ven.content, updated);
+        }
+    }
+
+    mod delete {
+        use super::*;
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn delete_existing(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+            let ven = repo
+                .delete(&"ven-1".parse().unwrap(), &Claims::ven_manager())
+                .await
+                .unwrap();
+            assert_eq!(ven, ven_1());
+
+            let ven = repo
+                .retrieve(&"ven-1".parse().unwrap(), &Claims::ven_manager())
+                .await;
+            assert!(matches!(ven, Err(AppError::NotFound)));
+
+            let ven = repo
+                .retrieve(&"ven-2".parse().unwrap(), &Claims::ven_manager())
+                .await
+                .unwrap();
+            assert_eq!(ven, ven_2());
+        }
+
+        #[sqlx::test(fixtures("users", "vens"))]
+        async fn delete_not_existing(db: PgPool) {
+            let repo: PgVenStorage = db.into();
+            let ven = repo
+                .delete(&"ven-not-existing".parse().unwrap(), &Claims::ven_manager())
+                .await;
+            assert!(matches!(ven, Err(AppError::NotFound)));
+        }
     }
 }

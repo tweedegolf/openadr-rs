@@ -15,8 +15,10 @@ use std::sync::Arc;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresStorage;
 
-use crate::jwt::Claims;
-use crate::{error::AppError, jwt::AuthRole};
+use crate::{
+    error::AppError,
+    jwt::{AuthRole, Claims},
+};
 
 #[async_trait]
 pub trait Crud: Send + Sync + 'static {

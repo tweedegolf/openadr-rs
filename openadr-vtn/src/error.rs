@@ -1,10 +1,11 @@
-use axum::extract::rejection::JsonRejection;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::{
+    extract::rejection::JsonRejection,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use axum_extra::extract::QueryRejection;
-use openadr_wire::problem::Problem;
-use openadr_wire::IdentifierError;
+use openadr_wire::{problem::Problem, IdentifierError};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "sqlx")]
 use sqlx::error::DatabaseError;
