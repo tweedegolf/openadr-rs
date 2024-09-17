@@ -10,6 +10,7 @@ pub mod auth;
 pub mod event;
 pub mod program;
 pub mod report;
+pub mod ven;
 
 pub type AppResponse<T> = Result<Json<T>, AppError>;
 

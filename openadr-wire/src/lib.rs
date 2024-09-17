@@ -11,6 +11,7 @@ pub use program::Program;
 pub use report::Report;
 use serde::de::Unexpected;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+pub use ven::Ven;
 
 pub mod event;
 pub mod interval;

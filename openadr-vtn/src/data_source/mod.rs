@@ -6,6 +6,7 @@ use openadr_wire::{
     event::{EventContent, EventId},
     program::{ProgramContent, ProgramId},
     report::{ReportContent, ReportId},
+    ven::{Ven, VenContent, VenId},
     Event, Program, Report,
 };
 use std::sync::Arc;
@@ -87,6 +88,18 @@ pub trait EventCrud:
 {
 }
 
+pub trait VenCrud:
+    Crud<
+    Type = Ven,
+    Id = VenId,
+    NewType = VenContent,
+    Error = AppError,
+    Filter = crate::api::ven::QueryParams,
+    PermissionFilter = Claims,
+>
+{
+}
+
 #[async_trait]
 pub trait AuthSource: Send + Sync + 'static {
     async fn get_user(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo>;
@@ -96,6 +109,7 @@ pub trait DataSource: Send + Sync + 'static {
     fn programs(&self) -> Arc<dyn ProgramCrud>;
     fn reports(&self) -> Arc<dyn ReportCrud>;
     fn events(&self) -> Arc<dyn EventCrud>;
+    fn vens(&self) -> Arc<dyn VenCrud>;
     fn auth(&self) -> Arc<dyn AuthSource>;
 }
 

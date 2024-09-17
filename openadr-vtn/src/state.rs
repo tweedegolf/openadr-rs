@@ -1,4 +1,5 @@
-use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
+use crate::api::ven;
+use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud, VenCrud};
 use crate::error::AppError;
 use crate::jwt::JwtManager;
 use axum::extract::{FromRef, Request};
@@ -46,6 +47,11 @@ impl AppState {
                 "/events/:id",
                 get(event::get).put(event::edit).delete(event::delete),
             )
+            .route("/vens", get(ven::get_all).post(ven::add))
+            .route(
+                "/vens/:id",
+                get(ven::get).put(ven::edit).delete(ven::delete),
+            )
             .route("/auth/register", post(auth::register))
             .route("/auth/token", post(auth::token))
             .layer(middleware::from_fn(method_not_allowed))
@@ -87,5 +93,11 @@ impl FromRef<AppState> for Arc<dyn EventCrud> {
 impl FromRef<AppState> for Arc<dyn ReportCrud> {
     fn from_ref(state: &AppState) -> Arc<dyn ReportCrud> {
         state.storage.reports()
+    }
+}
+
+impl FromRef<AppState> for Arc<dyn VenCrud> {
+    fn from_ref(state: &AppState) -> Arc<dyn VenCrud> {
+        state.storage.vens()
     }
 }

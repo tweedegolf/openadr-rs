@@ -9,6 +9,20 @@ This repository contains only OpenADR 3.0, older versions are not supported.
 Currently, only the `/programs`, `/reports`, `/events` endpoints are supported.
 Also no authentication is supported yet.
 
+## Database setup
+
+Startup a postgres database. For example, using docker compose:
+
+```bash
+docker compose up db
+```
+
+Run the [migrations](https://github.com/launchbadge/sqlx/blob/main/sqlx-cli/README.md):
+
+```bash
+cargo sqlx migrate run
+```
+
 ## How to use
 
 Running the VTN using cargo:

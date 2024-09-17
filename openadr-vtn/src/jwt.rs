@@ -23,6 +23,7 @@ pub struct JwtManager {
 #[serde(tag = "role", content = "id")]
 pub enum AuthRole {
     UserManager,
+    VenManager,
     Business(String),
     AnyBusiness,
     VEN(String),
@@ -39,6 +40,10 @@ impl AuthRole {
 
     pub fn is_user_manager(&self) -> bool {
         matches!(self, AuthRole::UserManager)
+    }
+
+    pub fn is_ven_manager(&self) -> bool {
+        matches!(self, AuthRole::VenManager)
     }
 }
 
@@ -112,6 +117,10 @@ impl Claims {
     pub fn is_user_manager(&self) -> bool {
         self.roles.iter().any(AuthRole::is_user_manager)
     }
+
+    pub fn is_ven_manager(&self) -> bool {
+        self.roles.iter().any(AuthRole::is_ven_manager)
+    }
 }
 
 impl JwtManager {
@@ -178,6 +187,9 @@ pub struct VENUser(pub Claims);
 
 /// User claims extracted from the request, with the requirement that the user is a user manager
 pub struct UserManagerUser(pub Claims);
+
+/// User claims extracted from the request, with the requirement that the user is a VEN manager
+pub struct VenManagerUser(pub Claims);
 
 #[async_trait]
 impl<S: Send + Sync> FromRequestParts<S> for User
@@ -252,5 +264,23 @@ where
             return Err(AppError::Forbidden("User does not have the required role"));
         }
         Ok(UserManagerUser(user))
+    }
+}
+
+#[async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for VenManagerUser
+where
+    Arc<JwtManager>: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let User(user) = User::from_request_parts(parts, state).await?;
+        if !user.is_ven_manager() {
+            return Err(AppError::Auth(
+                "User does not have the required role".to_string(),
+            ));
+        }
+        Ok(VenManagerUser(user))
     }
 }
