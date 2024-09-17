@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM ven v\n            WHERE v.id = $1\n            RETURNING\n                v.id,\n                v.created_date_time,\n                v.modification_date_time,\n                v.ven_name,\n                v.attributes,\n                v.targets\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_date_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "modification_date_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "ven_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "attributes",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "targets",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "917bf27ebb6ce4a9ff7358b6ad32f334c58cfabc978a763753ad72fa57a4d888"
+}

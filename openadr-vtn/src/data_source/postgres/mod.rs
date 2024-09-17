@@ -3,11 +3,14 @@ use crate::data_source::postgres::program::PgProgramStorage;
 use crate::data_source::postgres::report::PgReportStorage;
 use crate::data_source::postgres::user::PgAuthSource;
 use crate::data_source::postgres::ven::PgVenStorage;
-use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud, VenCrud};
+use crate::data_source::{
+    AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud, ResourceCrud, VenCrud,
+};
 use crate::error::AppError;
 use crate::jwt::{BusinessIds, Claims};
 use dotenvy::dotenv;
 use openadr_wire::target::{TargetLabel, TargetMap};
+use resource::PgResourceStorage;
 use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -16,6 +19,7 @@ use tracing::{error, info, trace};
 mod event;
 mod program;
 mod report;
+mod resource;
 mod user;
 mod ven;
 
@@ -39,6 +43,10 @@ impl DataSource for PostgresStorage {
 
     fn vens(&self) -> Arc<dyn VenCrud> {
         Arc::<PgVenStorage>::new(self.db.clone().into())
+    }
+
+    fn resources(&self) -> Arc<dyn ResourceCrud> {
+        Arc::<PgResourceStorage>::new(self.db.clone().into())
     }
 
     fn auth(&self) -> Arc<dyn AuthSource> {
