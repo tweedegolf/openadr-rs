@@ -9,7 +9,20 @@ VALUES ('ven-1',
         '2024-07-25 08:31:10.776000 +00:00',
         'ven-1-name',
         NULL,
-        NULL),
+        '[
+          {
+            "type": "GROUP",
+            "values": [
+              "group-1"
+            ]
+          },
+          {
+            "type": "PRIVATE_LABEL",
+            "values": [
+              "private value"
+            ]
+          }
+        ]'),
        ('ven-2',
         '2024-07-25 08:31:10.776000 +00:00',
         '2024-07-25 08:31:10.776000 +00:00',
@@ -19,15 +32,3 @@ VALUES ('ven-1',
 
 INSERT INTO user_ven (ven_id, user_id)
 VALUES ('ven-1', 'user-1');
-
-INSERT INTO ven_program (program_id, ven_id)
-VALUES ('program-1', 'ven-1');
-
-INSERT INTO ven_program (program_id, ven_id)
-VALUES ('program-1', 'ven-2');
-
-INSERT INTO ven_program (program_id, ven_id)
-VALUES ('program-2', 'ven-2');
-
-INSERT INTO ven_program (program_id, ven_id)
-VALUES ('program-3', 'ven-1');

@@ -1,19 +1,25 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
-use axum::Json;
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tracing::{info, trace};
 use validator::{Validate, ValidationError};
 
-use openadr_wire::target::TargetLabel;
-use openadr_wire::ven::{Ven, VenContent, VenId};
+use openadr_wire::{
+    target::TargetLabel,
+    ven::{Ven, VenContent, VenId},
+};
 
-use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
-use crate::data_source::VenCrud;
-use crate::error::AppError;
-use crate::jwt::{User, VenManagerUser};
+use crate::{
+    api::{AppResponse, ValidatedJson, ValidatedQuery},
+    data_source::VenCrud,
+    error::AppError,
+    jwt::{User, VenManagerUser},
+};
 
 pub async fn get_all(
     State(ven_source): State<Arc<dyn VenCrud>>,

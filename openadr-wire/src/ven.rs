@@ -1,13 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use std::fmt::Display;
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 use validator::Validate;
 
-use crate::resource::Resource;
-use crate::values_map::ValuesMap;
-use crate::{Identifier, IdentifierError};
+use crate::{resource::Resource, values_map::ValuesMap, Identifier, IdentifierError};
 
 /// Ven represents a client with the ven role.
 #[skip_serializing_none]

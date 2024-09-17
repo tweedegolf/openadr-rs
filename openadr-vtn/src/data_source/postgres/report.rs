@@ -1,12 +1,18 @@
-use crate::api::report::QueryParams;
-use crate::data_source::postgres::{extract_business_ids, to_json_value, PgId};
-use crate::data_source::{Crud, ReportCrud};
-use crate::error::AppError;
-use crate::jwt::Claims;
+use crate::{
+    api::report::QueryParams,
+    data_source::{
+        postgres::{extract_business_ids, to_json_value, PgId},
+        Crud, ReportCrud,
+    },
+    error::AppError,
+    jwt::Claims,
+};
 use axum::async_trait;
 use chrono::{DateTime, Utc};
-use openadr_wire::report::{ReportContent, ReportId};
-use openadr_wire::Report;
+use openadr_wire::{
+    report::{ReportContent, ReportId},
+    Report,
+};
 use sqlx::PgPool;
 use tracing::error;
 

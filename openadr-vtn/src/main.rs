@@ -1,14 +1,10 @@
-use tokio::net::TcpListener;
-use tokio::signal;
+use tokio::{net::TcpListener, signal};
 use tracing::{error, info};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[cfg(feature = "postgres")]
 use openadr_vtn::data_source::PostgresStorage;
-use openadr_vtn::jwt::JwtManager;
-use openadr_vtn::state::AppState;
+use openadr_vtn::{jwt::JwtManager, state::AppState};
 
 #[tokio::main]
 async fn main() {

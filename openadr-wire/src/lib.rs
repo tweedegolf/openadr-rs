@@ -9,8 +9,7 @@ use std::fmt::Display;
 pub use event::Event;
 pub use program::Program;
 pub use report::Report;
-use serde::de::Unexpected;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Unexpected, Deserialize, Deserializer, Serialize, Serializer};
 pub use ven::Ven;
 
 pub mod event;

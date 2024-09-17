@@ -1,16 +1,16 @@
 //! Types used for the `event/` endpoint
 
-use crate::interval::IntervalPeriod;
-use crate::program::ProgramId;
-use crate::report::ReportDescriptor;
-use crate::target::TargetMap;
-use crate::values_map::Value;
-use crate::{Identifier, IdentifierError, Unit};
+use crate::{
+    interval::IntervalPeriod, program::ProgramId, report::ReportDescriptor, target::TargetMap,
+    values_map::Value, Identifier, IdentifierError, Unit,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use std::fmt::{Display, Formatter};
-use std::str::FromStr;
+use std::{
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 use validator::Validate;
 
 /// Event object to communicate a Demand Response request to VEN. If intervalPeriod is present, sets
@@ -315,8 +315,7 @@ pub enum EventType {
 
 #[cfg(test)]
 mod tests {
-    use crate::values_map::Value;
-    use crate::Duration;
+    use crate::{values_map::Value, Duration};
 
     use super::*;
 

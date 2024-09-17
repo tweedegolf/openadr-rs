@@ -1,6 +1,7 @@
-use crate::data_source::postgres::PgId;
-use crate::data_source::{AuthInfo, AuthSource};
-use crate::jwt::AuthRole;
+use crate::{
+    data_source::{postgres::PgId, AuthInfo, AuthSource},
+    jwt::AuthRole,
+};
 use axum::async_trait;
 use sqlx::PgPool;
 

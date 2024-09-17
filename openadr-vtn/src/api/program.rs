@@ -1,20 +1,26 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
-use axum::Json;
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tracing::{info, trace};
 use validator::{Validate, ValidationError};
 
-use openadr_wire::program::{ProgramContent, ProgramId};
-use openadr_wire::target::TargetLabel;
-use openadr_wire::Program;
+use openadr_wire::{
+    program::{ProgramContent, ProgramId},
+    target::TargetLabel,
+    Program,
+};
 
-use crate::api::{AppResponse, ValidatedJson, ValidatedQuery};
-use crate::data_source::ProgramCrud;
-use crate::error::AppError;
-use crate::jwt::{BusinessUser, User};
+use crate::{
+    api::{AppResponse, ValidatedJson, ValidatedQuery},
+    data_source::ProgramCrud,
+    error::AppError,
+    jwt::{BusinessUser, User},
+};
 
 pub async fn get_all(
     State(program_source): State<Arc<dyn ProgramCrud>>,
@@ -106,8 +112,10 @@ mod test {
 
     use super::*;
     // for `collect`
-    use crate::data_source::DataSource;
-    use crate::jwt::{AuthRole, Claims};
+    use crate::{
+        data_source::DataSource,
+        jwt::{AuthRole, Claims},
+    };
     use axum::{
         body::Body,
         http::{self, Request, Response, StatusCode},
@@ -570,7 +578,7 @@ mod test {
             assert_eq!(response.status(), StatusCode::OK);
         }
 
-        #[sqlx::test(fixtures("users", "business", "programs", "vens"))]
+        #[sqlx::test(fixtures("users", "business", "programs", "vens", "vens-programs"))]
         async fn retrieve_all_returns_ven_assigned_programs_only(db: PgPool) {
             let (state, _) = state_with_programs(vec![], db).await;
             let mut app = state.clone().into_router();

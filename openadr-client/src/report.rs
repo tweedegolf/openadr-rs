@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use openadr_wire::{report::ReportContent, Report};
 
-use crate::error::Result;
-use crate::ClientRef;
+use crate::{error::Result, ClientRef};
 
 #[derive(Debug)]
 pub struct ReportClient {

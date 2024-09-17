@@ -1,15 +1,19 @@
-use crate::api::program::QueryParams;
-use crate::data_source::postgres::{
-    extract_business_id, extract_vens, to_json_value, PgTargetsFilter,
+use crate::{
+    api::program::QueryParams,
+    data_source::{
+        postgres::{extract_business_id, extract_vens, to_json_value, PgTargetsFilter},
+        Crud, ProgramCrud,
+    },
+    error::AppError,
+    jwt::Claims,
 };
-use crate::data_source::{Crud, ProgramCrud};
-use crate::error::AppError;
-use crate::jwt::Claims;
 use axum::async_trait;
 use chrono::{DateTime, Utc};
-use openadr_wire::program::{ProgramContent, ProgramId};
-use openadr_wire::target::TargetLabel;
-use openadr_wire::Program;
+use openadr_wire::{
+    program::{ProgramContent, ProgramId},
+    target::TargetLabel,
+    Program,
+};
 use sqlx::PgPool;
 use tracing::{error, trace};
 
@@ -494,16 +498,19 @@ impl Crud for PgProgramStorage {
 #[cfg(test)]
 #[cfg(feature = "live-db-test")]
 mod tests {
-    use crate::api::program::QueryParams;
-    use crate::data_source::postgres::program::PgProgramStorage;
-    use crate::data_source::Crud;
-    use crate::error::AppError;
-    use crate::jwt::Claims;
-    use openadr_wire::event::{EventPayloadDescriptor, EventType};
-    use openadr_wire::interval::IntervalPeriod;
-    use openadr_wire::program::{PayloadDescriptor, ProgramContent, ProgramDescription};
-    use openadr_wire::target::{TargetEntry, TargetLabel, TargetMap};
-    use openadr_wire::Program;
+    use crate::{
+        api::program::QueryParams,
+        data_source::{postgres::program::PgProgramStorage, Crud},
+        error::AppError,
+        jwt::Claims,
+    };
+    use openadr_wire::{
+        event::{EventPayloadDescriptor, EventType},
+        interval::IntervalPeriod,
+        program::{PayloadDescriptor, ProgramContent, ProgramDescription},
+        target::{TargetEntry, TargetLabel, TargetMap},
+        Program,
+    };
     use sqlx::PgPool;
 
     impl Default for QueryParams {

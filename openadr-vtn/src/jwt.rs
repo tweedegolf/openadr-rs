@@ -70,6 +70,10 @@ impl Claims {
     pub(crate) fn any_business_user() -> Claims {
         Claims::new(vec![AuthRole::AnyBusiness])
     }
+
+    pub(crate) fn ven_manager() -> Claims {
+        Claims::new(vec![AuthRole::VenManager])
+    }
 }
 
 #[derive(Debug)]

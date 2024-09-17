@@ -125,11 +125,11 @@ jobs:
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
-          toolchain: stable
+          toolchain: nightly
           components: rustfmt
 
       - name: Check formatting
-        run: cargo fmt --all --check
+        run: cargo +nightly fmt --all --check -- --config imports_granularity="Crate"
 
   clippy:
     name: Clippy

@@ -1,15 +1,13 @@
 //! Types used for the `program/` endpoint
 
-use crate::event::EventPayloadDescriptor;
-use crate::interval::IntervalPeriod;
-use crate::report::ReportPayloadDescriptor;
-use crate::target::TargetMap;
-use crate::{Duration, IdentifierError};
+use crate::{
+    event::EventPayloadDescriptor, interval::IntervalPeriod, report::ReportPayloadDescriptor,
+    target::TargetMap, Duration, IdentifierError,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use std::fmt::Display;
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 use validator::Validate;
 
 use super::Identifier;

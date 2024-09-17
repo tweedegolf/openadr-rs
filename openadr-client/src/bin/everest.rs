@@ -6,8 +6,13 @@ use openadr_wire::{
 
 use openadr_client::{ProgramClient, Timeline};
 use std::{error::Error, time::Duration};
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::{select, sync::mpsc};
+use tokio::{
+    select,
+    sync::{
+        mpsc,
+        mpsc::{Receiver, Sender},
+    },
+};
 use uuid::Uuid;
 
 async fn wait_for_next_start(clock: &impl Clock, timeline: &Timeline) {
@@ -186,11 +191,15 @@ impl LimitsRes {
 #[cfg(test)]
 mod test {
     use super::*;
-    use openadr_wire::event::{EventContent, EventInterval};
-    use openadr_wire::interval::IntervalPeriod;
-    use openadr_wire::program::{ProgramContent, ProgramId};
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
+    use openadr_wire::{
+        event::{EventContent, EventInterval},
+        interval::IntervalPeriod,
+        program::{ProgramContent, ProgramId},
+    };
+    use std::sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    };
 
     struct TestingClock(AtomicU64);
 
