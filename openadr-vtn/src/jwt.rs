@@ -198,9 +198,7 @@ where
         let jwt_manager = Arc::<JwtManager>::from_ref(state);
 
         let Ok(claims) = jwt_manager.decode_and_validate(bearer.0.token()) else {
-            return Err(AppError::Auth(
-                "Invalid authentication token provided".to_string(),
-            ));
+            return Err(AppError::Forbidden("Invalid authentication token provided"));
         };
 
         trace!(user = ?claims, "Extracted User from request");
@@ -219,9 +217,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let User(user) = User::from_request_parts(parts, state).await?;
         if !user.is_business() {
-            return Err(AppError::Auth(
-                "User does not have the required role".to_string(),
-            ));
+            return Err(AppError::Forbidden("User does not have the required role"));
         }
         Ok(BusinessUser(user))
     }
@@ -237,9 +233,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let User(user) = User::from_request_parts(parts, state).await?;
         if !user.is_ven() {
-            return Err(AppError::Auth(
-                "User does not have the required role".to_string(),
-            ));
+            return Err(AppError::Forbidden("User does not have the required role"));
         }
         Ok(VENUser(user))
     }
@@ -255,9 +249,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let User(user) = User::from_request_parts(parts, state).await?;
         if !user.is_user_manager() {
-            return Err(AppError::Auth(
-                "User does not have the required role".to_string(),
-            ));
+            return Err(AppError::Forbidden("User does not have the required role"));
         }
         Ok(UserManagerUser(user))
     }

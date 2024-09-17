@@ -177,7 +177,7 @@ async fn check_write_permission(
         // If no business is connected, anyone may write
         if let Some(id) = id {
             if !business_ids.contains(&id) {
-                Err(AppError::Forbidden("You do not have write permissions for events belonging to a program that belongs to another business logic"))?;
+                Err(AppError::Auth("You do not have write permissions for events belonging to a program that belongs to another business logic".to_string()))?;
             }
         }
     };

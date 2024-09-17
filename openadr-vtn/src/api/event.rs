@@ -471,7 +471,7 @@ mod test {
 
             let token = jwt_test_token(&state, vec![AuthRole::Business("business-2".to_string())]);
             let response = help_create_event(&mut app, &content, &token).await;
-            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
             let token = jwt_test_token(
                 &state,
@@ -496,7 +496,7 @@ mod test {
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
             let token = jwt_test_token(&state, vec![AuthRole::Business("business-2".to_string())]);
             let response = app
@@ -512,7 +512,7 @@ mod test {
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
             let token = jwt_test_token(&state, vec![AuthRole::Business("business-1".to_string())]);
             let response = app
@@ -707,7 +707,7 @@ mod test {
 
             let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
             let response = help_create_event(&mut app, &default_event_content(), &token).await;
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
             let response = app
                 .clone()
@@ -721,7 +721,7 @@ mod test {
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
             let response = app
                 .clone()
@@ -738,7 +738,7 @@ mod test {
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
         }
     }
 }
