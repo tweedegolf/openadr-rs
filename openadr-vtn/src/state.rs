@@ -1,6 +1,7 @@
-use crate::api::ven;
-use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud, VenCrud};
 use crate::error::AppError;
+use crate::data_source::{
+    AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud, ResourceCrud, VenCrud,
+};
 use crate::jwt::JwtManager;
 use axum::extract::{FromRef, Request};
 use axum::middleware;
@@ -27,9 +28,12 @@ impl AppState {
         use axum::routing::{get, post};
         use tower_http::trace::TraceLayer;
 
+        use crate::api::auth;
+        use crate::api::event;
         use crate::api::program;
         use crate::api::report;
-        use crate::api::{auth, event};
+        use crate::api::resource;
+        use crate::api::ven;
 
         axum::Router::new()
             .route("/programs", get(program::get_all).post(program::add))
@@ -48,6 +52,14 @@ impl AppState {
                 get(event::get).put(event::edit).delete(event::delete),
             )
             .route("/vens", get(ven::get_all).post(ven::add))
+            .route(
+                "/vens/:id",
+                get(ven::get).put(ven::edit).delete(ven::delete),
+            )
+            .route(
+                "/vens:ven_id/resources",
+                get(resource::get_all).post(ven::add),
+            )
             .route(
                 "/vens/:id",
                 get(ven::get).put(ven::edit).delete(ven::delete),
@@ -99,5 +111,11 @@ impl FromRef<AppState> for Arc<dyn ReportCrud> {
 impl FromRef<AppState> for Arc<dyn VenCrud> {
     fn from_ref(state: &AppState) -> Arc<dyn VenCrud> {
         state.storage.vens()
+    }
+}
+
+impl FromRef<AppState> for Arc<dyn ResourceCrud> {
+    fn from_ref(state: &AppState) -> Arc<dyn ResourceCrud> {
+        state.storage.resources()
     }
 }
