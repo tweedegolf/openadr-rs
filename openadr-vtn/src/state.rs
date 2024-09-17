@@ -1,12 +1,16 @@
-use crate::error::AppError;
-use crate::data_source::{
-    AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud, ResourceCrud, VenCrud,
+use crate::{
+    data_source::{
+        AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud, ResourceCrud, VenCrud,
+    },
+    error::AppError,
+    jwt::JwtManager,
 };
-use crate::jwt::JwtManager;
-use axum::extract::{FromRef, Request};
-use axum::middleware;
-use axum::middleware::Next;
-use axum::response::IntoResponse;
+use axum::{
+    extract::{FromRef, Request},
+    middleware,
+    middleware::Next,
+    response::IntoResponse,
+};
 use reqwest::StatusCode;
 use std::sync::Arc;
 
