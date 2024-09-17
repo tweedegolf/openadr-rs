@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO ven (\n                id,\n                created_date_time,\n                modification_date_time,\n                ven_name,\n                attributes,\n                targets\n            )\n            VALUES (gen_random_uuid(), now(), now(), $1, $2, $3)\n            RETURNING\n                id,\n                created_date_time,\n                modification_date_time,\n                ven_name,\n                attributes,\n                targets\n            ",
+  "query": "\n            UPDATE ven\n            SET modification_date_time = now(),\n                ven_name = $2,\n                attributes = $3,\n                targets = $4\n            WHERE id = $1\n            RETURNING *\n            ",
   "describe": {
     "columns": [
       {
@@ -37,6 +37,7 @@
     "parameters": {
       "Left": [
         "Text",
+        "Text",
         "Jsonb",
         "Jsonb"
       ]
@@ -50,5 +51,5 @@
       true
     ]
   },
-  "hash": "08463f596e5d3deac8d5e8a29847fd5690ca76d47a2fccd9df3bd79aa4e9e1ab"
+  "hash": "4b23b4975ecdedbadaca1d07d0645d30c18f4cd62a565cc44e7511cc34008474"
 }

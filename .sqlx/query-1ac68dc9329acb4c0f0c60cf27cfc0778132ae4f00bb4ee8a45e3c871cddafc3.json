@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id,\n                created_date_time,\n                modification_date_time,\n                resource_name,\n                ven_id,\n                attributes,\n                targets\n            FROM resource\n            WHERE id = $1\n            ",
+  "query": "\n            DELETE FROM resource r\n            WHERE r.id = $1 AND r.ven_id = $2\n            RETURNING r.*\n            ",
   "describe": {
     "columns": [
       {
@@ -41,6 +41,7 @@
     ],
     "parameters": {
       "Left": [
+        "Text",
         "Text"
       ]
     },
@@ -54,5 +55,5 @@
       true
     ]
   },
-  "hash": "4692bd4fe201d23dd6c58c5d9fad0be1299c5fd7fea66db0fc027699a281c4be"
+  "hash": "1ac68dc9329acb4c0f0c60cf27cfc0778132ae4f00bb4ee8a45e3c871cddafc3"
 }
