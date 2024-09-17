@@ -1,6 +1,11 @@
 use crate::data_source::{AuthSource, DataSource, EventCrud, ProgramCrud, ReportCrud};
+use crate::error::AppError;
 use crate::jwt::JwtManager;
-use axum::extract::FromRef;
+use axum::extract::{FromRef, Request};
+use axum::middleware;
+use axum::middleware::Next;
+use axum::response::IntoResponse;
+use reqwest::StatusCode;
 use std::sync::Arc;
 
 #[derive(Clone, FromRef)]
@@ -43,11 +48,21 @@ impl AppState {
             )
             .route("/auth/register", post(auth::register))
             .route("/auth/token", post(auth::token))
+            .layer(middleware::from_fn(method_not_allowed))
             .layer(TraceLayer::new_for_http())
     }
 
     pub fn into_router(self) -> axum::Router {
         Self::router_without_state().with_state(self)
+    }
+}
+
+pub async fn method_not_allowed(req: Request, next: Next) -> impl IntoResponse {
+    let resp = next.run(req).await;
+    let status = resp.status();
+    match status {
+        StatusCode::METHOD_NOT_ALLOWED => Err(AppError::MethodNotAllowed),
+        _ => Ok(resp),
     }
 }
 

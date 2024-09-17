@@ -640,7 +640,7 @@ mod test {
 
             let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
             let response = help_create_program(&mut app, &token, &default_content()).await;
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
             let response = app
                 .clone()
@@ -652,7 +652,7 @@ mod test {
                 ))
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
             app.clone()
                 .oneshot(
@@ -665,7 +665,7 @@ mod test {
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
         }
     }
 }

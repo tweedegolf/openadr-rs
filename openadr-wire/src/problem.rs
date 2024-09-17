@@ -12,8 +12,8 @@ impl Default for ProblemUri {
 }
 
 /// Reusable error response. From <https://opensource.zalando.com/problem/schema.yaml>.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Problem {
     /// An absolute URI that identifies the problem type.

@@ -30,12 +30,9 @@ pub enum AppError {
     #[cfg(feature = "sqlx")]
     #[error("Conflict: {0}")]
     Conflict(String, Option<Box<dyn DatabaseError>>),
-    #[cfg(not(feature = "sqlx"))]
-    #[error("Conflict: {0}")]
-    Conflict(String),
     #[cfg(feature = "sqlx")]
     #[error("Unprocessable Content: {0}")]
-    UnprocessableContent(String, Option<Box<dyn DatabaseError>>),
+    ForeignKeyConstrainstViolated(String, Option<Box<dyn DatabaseError>>),
     #[error("Authentication error: {0}")]
     Auth(String),
     #[cfg(feature = "sqlx")]
@@ -49,6 +46,8 @@ pub enum AppError {
     SerdeJsonBadRequest(serde_json::Error),
     #[error("Malformed Identifier")]
     Identifier(#[from] IdentifierError),
+    #[error("Method not allowed")]
+    MethodNotAllowed,
 }
 
 #[cfg(feature = "sqlx")]
@@ -60,7 +59,7 @@ impl From<sqlx::Error> for AppError {
                 Self::Conflict("Conflict".to_string(), Some(err))
             }
             sqlx::Error::Database(err) if err.is_foreign_key_violation() => {
-                Self::UnprocessableContent(
+                Self::ForeignKeyConstrainstViolated(
                     "A foreign key constraint is violated".to_string(),
                     Some(err),
                 )
@@ -171,17 +170,6 @@ impl AppError {
                     instance: Some(reference.to_string()),
                 }
             }
-            #[cfg(not(feature = "sqlx"))]
-            AppError::Conflict(err) => {
-                warn!(%reference, "Conflict: {}", err);
-                Problem {
-                    r#type: Default::default(),
-                    title: Some(StatusCode::CONFLICT.to_string()),
-                    status: StatusCode::CONFLICT,
-                    detail: Some(err.to_string()),
-                    instance: Some(reference.to_string()),
-                }
-            }
             AppError::Auth(err) => {
                 trace!(%reference,
                     "Authentication error: {}",
@@ -242,7 +230,7 @@ impl AppError {
                 }
             }
             #[cfg(feature = "sqlx")]
-            AppError::UnprocessableContent(err, db_err) => {
+            AppError::ForeignKeyConstrainstViolated(err, db_err) => {
                 trace!(%reference,
                     "Unprocessable Content: {}, DB details: {:?}",
                     err,
@@ -250,9 +238,21 @@ impl AppError {
                 );
                 Problem {
                     r#type: Default::default(),
-                    title: Some(StatusCode::UNPROCESSABLE_ENTITY.to_string()),
-                    status: StatusCode::UNPROCESSABLE_ENTITY,
+                    title: Some(StatusCode::BAD_REQUEST.to_string()),
+                    status: StatusCode::BAD_REQUEST,
                     detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::MethodNotAllowed => {
+                trace!(%reference,
+                    "Method not allowed"
+                );
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::METHOD_NOT_ALLOWED.to_string()),
+                    status: StatusCode::METHOD_NOT_ALLOWED,
+                    detail: Some("See allow headers for allowed methods".to_string()),
                     instance: Some(reference.to_string()),
                 }
             }
