@@ -108,7 +108,7 @@ impl Crud for PgReportStorage {
         if !user
             .ven_ids()
             .into_iter()
-            .any(|user_ven| permitted_vens.contains(&user_ven))
+            .any(|user_ven| permitted_vens.contains(&user_ven.to_string()))
         {
             Err(AppError::NotFound)?
         };
@@ -168,7 +168,7 @@ impl Crud for PgReportStorage {
             "#,
             id.as_str(),
             user.is_ven(),
-            &user.ven_ids(),
+            &user.ven_ids_string(),
             business_ids.as_deref()
         )
         .fetch_one(&self.db)
@@ -201,7 +201,7 @@ impl Crud for PgReportStorage {
             filter.event_id.clone().map(|x| x.to_string()),
             filter.client_name,
             user.is_ven(),
-            &user.ven_ids(),
+            &user.ven_ids_string(),
             business_ids.as_deref(),
             filter.skip,
             filter.limit,
@@ -241,7 +241,7 @@ impl Crud for PgReportStorage {
             "#,
             id.as_str(),
             user.is_ven(),
-            &user.ven_ids(),
+            &user.ven_ids_string(),
             business_ids.as_deref(),
             new.program_id.as_str(),
             new.event_id.as_str(),

@@ -3,6 +3,7 @@ use crate::{
     jwt::AuthRole,
 };
 use axum::async_trait;
+use openadr_wire::IdentifierError;
 use sqlx::PgPool;
 
 pub struct PgAuthSource {
@@ -58,10 +59,11 @@ impl AuthSource for PgAuthSource {
         .ok();
 
         let mut ven_roles = vens
-            .map(|vens| {
+            .and_then(|vens| {
                 vens.into_iter()
-                    .map(|ven| AuthRole::VEN(ven.id))
-                    .collect::<Vec<_>>()
+                    .map(|ven| Ok(AuthRole::VEN(ven.id.parse()?)))
+                    .collect::<Result<Vec<_>, IdentifierError>>()
+                    .ok()
             })
             .unwrap_or_default();
 
