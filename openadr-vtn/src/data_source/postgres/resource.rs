@@ -200,7 +200,7 @@ impl VenScopedCrud for PgResourceStorage {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
 
-        Ok(sqlx::query_as!(
+        let res = sqlx::query_as!(
             PostgresResource,
             r#"
             SELECT
@@ -228,7 +228,15 @@ impl VenScopedCrud for PgResourceStorage {
         .await?
         .into_iter()
         .map(TryInto::try_into)
-        .collect::<Result<_, _>>()?)
+        .collect::<Result<Vec<_>, _>>()?;
+
+        trace!(
+            ven_id = ven_id.as_str(),
+            "retrieved {} resources",
+            res.len()
+        );
+
+        Ok(res)
     }
 
     async fn update(

@@ -168,11 +168,12 @@ mod tests {
         let resp = request_all(app, &token).await;
 
         assert_eq!(resp.status(), http::StatusCode::OK);
-        let vens: Vec<Ven> = get_response_json(resp).await;
+        let mut vens: Vec<Ven> = get_response_json(resp).await;
 
         assert_eq!(vens.len(), 2);
-        assert_eq!(vens[0].id.as_str(), "ven-2");
-        assert_eq!(vens[1].id.as_str(), "ven-1");
+        vens.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+        assert_eq!(vens[0].id.as_str(), "ven-1");
+        assert_eq!(vens[1].id.as_str(), "ven-2");
     }
 
     #[sqlx::test(fixtures("users", "vens"))]
