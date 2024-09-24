@@ -70,8 +70,7 @@ pub async fn get_all(
 
 pub async fn get(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
-    Path(ven_id): Path<VenId>,
-    Path(id): Path<ResourceId>,
+    Path((ven_id, id)): Path<(VenId, ResourceId)>,
     ResourceUser(user): ResourceUser,
 ) -> AppResponse<Resource> {
     let ven = resource_source.retrieve(&id, ven_id, &user).await?;
@@ -92,8 +91,7 @@ pub async fn add(
 
 pub async fn edit(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
-    Path(ven_id): Path<VenId>,
-    Path(id): Path<ResourceId>,
+    Path((ven_id, id)): Path<(VenId, ResourceId)>,
     ResourceUser(user): ResourceUser,
     ValidatedJson(content): ValidatedJson<ResourceContent>,
 ) -> AppResponse<Resource> {
@@ -106,8 +104,7 @@ pub async fn edit(
 
 pub async fn delete(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
-    Path(ven_id): Path<VenId>,
-    Path(id): Path<ResourceId>,
+    Path((ven_id, id)): Path<(VenId, ResourceId)>,
     ResourceUser(user): ResourceUser,
 ) -> AppResponse<Resource> {
     let resource = resource_source.delete(&id, ven_id, &user).await?;

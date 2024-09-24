@@ -516,7 +516,10 @@ mod tests {
         async fn get_not_existent(db: PgPool) {
             let repo: PgVenStorage = db.into();
             let ven = repo
-                .retrieve(&"ven-not-existent".parse().unwrap(), &VenPermissions::AllAllowed)
+                .retrieve(
+                    &"ven-not-existent".parse().unwrap(),
+                    &VenPermissions::AllAllowed,
+                )
                 .await;
 
             assert!(matches!(ven, Err(AppError::NotFound)));
@@ -547,7 +550,9 @@ mod tests {
         async fn add_existing_name(db: PgPool) {
             let repo: PgVenStorage = db.into();
 
-            let ven = repo.create(ven_1().content, &VenPermissions::AllAllowed).await;
+            let ven = repo
+                .create(ven_1().content, &VenPermissions::AllAllowed)
+                .await;
             assert!(matches!(ven, Err(AppError::Conflict(_, _))));
         }
     }
@@ -635,7 +640,10 @@ mod tests {
         async fn delete_not_existing(db: PgPool) {
             let repo: PgVenStorage = db.into();
             let ven = repo
-                .delete(&"ven-not-existing".parse().unwrap(), &VenPermissions::AllAllowed)
+                .delete(
+                    &"ven-not-existing".parse().unwrap(),
+                    &VenPermissions::AllAllowed,
+                )
                 .await;
             assert!(matches!(ven, Err(AppError::NotFound)));
         }
