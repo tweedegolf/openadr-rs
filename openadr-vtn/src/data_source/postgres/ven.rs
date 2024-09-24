@@ -155,6 +155,8 @@ impl Crud for PgVenStorage {
         .await?
         .try_into()?;
 
+        trace!(ven_id = ven.id.as_str(), "created ven");
+
         Ok(ven)
     }
 
@@ -181,6 +183,7 @@ impl Crud for PgVenStorage {
         .try_into()?;
 
         ven.content.resources = Some(PgResourceStorage::retrieve_by_ven(&self.db, id).await?);
+        trace!(ven_id = ven.id.as_str(), "retrieved ven");
 
         Ok(ven)
     }
@@ -243,6 +246,7 @@ impl Crud for PgVenStorage {
                 }
             }
         }
+        trace!("retrieved {} ven(s)", vens.len());
 
         Ok(vens)
     }
@@ -274,6 +278,7 @@ impl Crud for PgVenStorage {
         .try_into()?;
 
         ven.content.resources = Some(PgResourceStorage::retrieve_by_ven(&self.db, id).await?);
+        trace!(ven_id = id.as_str(), "updated ven");
 
         Ok(ven)
     }
@@ -306,6 +311,7 @@ impl Crud for PgVenStorage {
         .try_into()?;
 
         ven.content.resources = Some(vec![]);
+        trace!(ven_id = id.as_str(), "deleted ven");
 
         Ok(ven)
     }
