@@ -1237,7 +1237,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "thiserror",
- "tracing",
  "validator",
 ]
 
