@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    async_trait,
-    extract::{FromRef, FromRequestParts, Path, State},
-    http::request::Parts,
+    extract::{Path, State},
     Json,
 };
 use openadr_wire::ven::VenId;
@@ -21,44 +19,30 @@ use crate::{
     api::{AppResponse, ValidatedJson, ValidatedQuery},
     data_source::ResourceCrud,
     error::AppError,
-    jwt::{Claims, JwtManager, User},
+    jwt::{Claims, User},
 };
 
-pub struct ResourceUser(Claims);
-
-#[async_trait]
-impl<S: Send + Sync> FromRequestParts<S> for ResourceUser
-where
-    Arc<JwtManager>: FromRef<S>,
-{
-    type Rejection = AppError;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let User(user_claims) = User::from_request_parts(parts, state).await?;
-        let Path(ven_id): Path<VenId> = Path::from_request_parts(parts, state)
-            .await
-            .map_err(|_| AppError::BadRequest("a valid VEN id is required"))?;
-
-        if user_claims.is_ven_manager() {
-            return Ok(ResourceUser(user_claims));
-        }
-
-        if user_claims.is_ven() && user_claims.ven_ids().contains(&ven_id) {
-            return Ok(ResourceUser(user_claims));
-        }
-
-        Err(AppError::Forbidden(
-            "User not authorized to access this resource",
-        ))
+fn has_write_permission(user_claims: &Claims, ven_id: &VenId) -> Result<(), AppError> {
+    if user_claims.is_ven_manager() {
+        return Ok(());
     }
+
+    if user_claims.is_ven() && user_claims.ven_ids().contains(ven_id) {
+        return Ok(());
+    }
+
+    Err(AppError::Forbidden(
+        "User not authorized to access this resource",
+    ))
 }
 
 pub async fn get_all(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     Path(ven_id): Path<VenId>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
-    ResourceUser(user): ResourceUser,
+    User(user): User,
 ) -> AppResponse<Vec<Resource>> {
+    has_write_permission(&user, &ven_id)?;
     trace!(?query_params);
 
     let resources = resource_source
@@ -71,8 +55,9 @@ pub async fn get_all(
 pub async fn get(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     Path((ven_id, id)): Path<(VenId, ResourceId)>,
-    ResourceUser(user): ResourceUser,
+    User(user): User,
 ) -> AppResponse<Resource> {
+    has_write_permission(&user, &ven_id)?;
     let ven = resource_source.retrieve(&id, ven_id, &user).await?;
 
     Ok(Json(ven))
@@ -80,10 +65,11 @@ pub async fn get(
 
 pub async fn add(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
-    ResourceUser(user): ResourceUser,
+    User(user): User,
     Path(ven_id): Path<VenId>,
     ValidatedJson(new_resource): ValidatedJson<ResourceContent>,
 ) -> Result<(StatusCode, Json<Resource>), AppError> {
+    has_write_permission(&user, &ven_id)?;
     let ven = resource_source.create(new_resource, ven_id, &user).await?;
 
     Ok((StatusCode::CREATED, Json(ven)))
@@ -92,9 +78,10 @@ pub async fn add(
 pub async fn edit(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     Path((ven_id, id)): Path<(VenId, ResourceId)>,
-    ResourceUser(user): ResourceUser,
+    User(user): User,
     ValidatedJson(content): ValidatedJson<ResourceContent>,
 ) -> AppResponse<Resource> {
+    has_write_permission(&user, &ven_id)?;
     let resource = resource_source.update(&id, ven_id, content, &user).await?;
 
     info!(%resource.id, resource.resource_name=resource.content.resource_name, "resource updated");
@@ -105,8 +92,9 @@ pub async fn edit(
 pub async fn delete(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     Path((ven_id, id)): Path<(VenId, ResourceId)>,
-    ResourceUser(user): ResourceUser,
+    User(user): User,
 ) -> AppResponse<Resource> {
+    has_write_permission(&user, &ven_id)?;
     let resource = resource_source.delete(&id, ven_id, &user).await?;
     info!(%id, "deleted resource");
     Ok(Json(resource))
