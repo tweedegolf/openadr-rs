@@ -2,10 +2,9 @@ use crate::{
     api::ven::QueryParams,
     data_source::{
         postgres::{to_json_value, PgTargetsFilter},
-        Crud, VenCrud,
+        Crud, VenCrud, VenPermissions,
     },
     error::AppError,
-    jwt::Claims,
 };
 use axum::async_trait;
 use chrono::{DateTime, Utc};
@@ -127,7 +126,7 @@ impl Crud for PgVenStorage {
     type NewType = VenContent;
     type Error = AppError;
     type Filter = QueryParams;
-    type PermissionFilter = Claims;
+    type PermissionFilter = VenPermissions;
 
     async fn create(
         &self,
@@ -162,16 +161,20 @@ impl Crud for PgVenStorage {
     async fn retrieve(
         &self,
         id: &Self::Id,
-        _user: &Self::PermissionFilter,
+        permissions: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
+        let ids = permissions.as_value();
+
         let mut ven: Ven = sqlx::query_as!(
             PostgresVen,
             r#"
             SELECT *
             FROM ven
             WHERE id = $1
+            AND ($2::text[] IS NULL OR id = ANY($2))
             "#,
             id.as_str(),
+            ids.as_deref(),
         )
         .fetch_one(&self.db)
         .await?
@@ -185,10 +188,12 @@ impl Crud for PgVenStorage {
     async fn retrieve_all(
         &self,
         filter: &Self::Filter,
-        _user: &Self::PermissionFilter,
+        permissions: &Self::PermissionFilter,
     ) -> Result<Vec<Self::Type>, Self::Error> {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
+
+        let ids = permissions.as_value();
 
         let mut vens: Vec<Ven> = sqlx::query_as!(
             PostgresVen,
@@ -205,12 +210,15 @@ impl Crud for PgVenStorage {
             WHERE ($1::text[] IS NULL OR v.ven_name = ANY($1))
               AND ($2::text[] IS NULL OR r.resource_name = ANY($2))
               AND ($3::jsonb = '[]'::jsonb OR $3::jsonb <@ v.targets)
-            OFFSET $4 LIMIT $5
+              AND ($4::text[] IS NULL OR v.id = ANY($4))
+            ORDER BY v.created_date_time DESC
+            OFFSET $5 LIMIT $6
             "#,
             pg_filter.ven_names,
             pg_filter.resource_names,
             serde_json::to_value(pg_filter.targets)
                 .map_err(AppError::SerdeJsonInternalServerError)?,
+            ids.as_deref(),
             pg_filter.skip,
             pg_filter.limit,
         )
@@ -310,7 +318,6 @@ mod tests {
         api::ven::QueryParams,
         data_source::{postgres::ven::PgVenStorage, Crud},
         error::AppError,
-        jwt::Claims,
     };
     use openadr_wire::{
         values_map::{Value, ValueType, ValuesMap},
@@ -369,7 +376,7 @@ mod tests {
     }
 
     mod get_all {
-        use crate::data_source::postgres::ven::PgVenStorage;
+        use crate::data_source::postgres::ven::{PgVenStorage, VenPermissions};
 
         use super::*;
         use openadr_wire::target::TargetLabel;
@@ -378,7 +385,7 @@ mod tests {
         async fn default_get_all(db: PgPool) {
             let repo: PgVenStorage = db.into();
             let mut vens = repo
-                .retrieve_all(&Default::default(), &Claims::ven_manager())
+                .retrieve_all(&Default::default(), &VenPermissions::AllAllowed)
                 .await
                 .unwrap();
             assert_eq!(vens.len(), 2);
@@ -395,7 +402,7 @@ mod tests {
                         limit: 1,
                         ..Default::default()
                     },
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
@@ -411,7 +418,7 @@ mod tests {
                         skip: 1,
                         ..Default::default()
                     },
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
@@ -423,7 +430,7 @@ mod tests {
                         skip: 2,
                         ..Default::default()
                     },
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
@@ -441,7 +448,7 @@ mod tests {
                         target_values: Some(vec!["group-1".to_string()]),
                         ..Default::default()
                     },
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
@@ -454,7 +461,7 @@ mod tests {
                         target_values: Some(vec!["not-existent".to_string()]),
                         ..Default::default()
                     },
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
@@ -467,7 +474,7 @@ mod tests {
                         target_values: Some(vec!["ven-2-name".to_string()]),
                         ..Default::default()
                     },
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
@@ -481,7 +488,7 @@ mod tests {
                         target_values: Some(vec!["ven-not-existent".to_string()]),
                         ..Default::default()
                     },
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
@@ -490,6 +497,8 @@ mod tests {
     }
 
     mod get {
+        use crate::data_source::postgres::ven::VenPermissions;
+
         use super::*;
 
         #[sqlx::test(fixtures("users", "vens"))]
@@ -497,7 +506,7 @@ mod tests {
             let repo: PgVenStorage = db.into();
 
             let ven = repo
-                .retrieve(&"ven-1".parse().unwrap(), &Claims::ven_manager())
+                .retrieve(&"ven-1".parse().unwrap(), &VenPermissions::AllAllowed)
                 .await
                 .unwrap();
             assert_eq!(ven, ven_1());
@@ -507,7 +516,7 @@ mod tests {
         async fn get_not_existent(db: PgPool) {
             let repo: PgVenStorage = db.into();
             let ven = repo
-                .retrieve(&"ven-not-existent".parse().unwrap(), &Claims::ven_manager())
+                .retrieve(&"ven-not-existent".parse().unwrap(), &VenPermissions::AllAllowed)
                 .await;
 
             assert!(matches!(ven, Err(AppError::NotFound)));
@@ -515,6 +524,8 @@ mod tests {
     }
 
     mod add {
+        use crate::data_source::postgres::ven::VenPermissions;
+
         use super::*;
         use chrono::{Duration, Utc};
 
@@ -523,7 +534,7 @@ mod tests {
             let repo: PgVenStorage = db.into();
 
             let ven = repo
-                .create(ven_1().content, &Claims::ven_manager())
+                .create(ven_1().content, &VenPermissions::AllAllowed)
                 .await
                 .unwrap();
             assert!(ven.created_date_time < Utc::now() + Duration::minutes(10));
@@ -536,12 +547,14 @@ mod tests {
         async fn add_existing_name(db: PgPool) {
             let repo: PgVenStorage = db.into();
 
-            let ven = repo.create(ven_1().content, &Claims::ven_manager()).await;
+            let ven = repo.create(ven_1().content, &VenPermissions::AllAllowed).await;
             assert!(matches!(ven, Err(AppError::Conflict(_, _))));
         }
     }
 
     mod modify {
+        use crate::data_source::postgres::ven::VenPermissions;
+
         use super::*;
         use chrono::{DateTime, Duration, Utc};
 
@@ -552,7 +565,7 @@ mod tests {
                 .update(
                     &"ven-1".parse().unwrap(),
                     ven_1().content,
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
@@ -578,14 +591,14 @@ mod tests {
                 .update(
                     &"ven-1".parse().unwrap(),
                     updated.clone(),
-                    &Claims::ven_manager(),
+                    &VenPermissions::AllAllowed,
                 )
                 .await
                 .unwrap();
 
             assert_eq!(ven.content, updated);
             let ven = repo
-                .retrieve(&"ven-1".parse().unwrap(), &Claims::ven_manager())
+                .retrieve(&"ven-1".parse().unwrap(), &VenPermissions::AllAllowed)
                 .await
                 .unwrap();
             assert_eq!(ven.content, updated);
@@ -593,24 +606,26 @@ mod tests {
     }
 
     mod delete {
+        use crate::data_source::postgres::ven::VenPermissions;
+
         use super::*;
 
         #[sqlx::test(fixtures("users", "vens"))]
         async fn delete_existing(db: PgPool) {
             let repo: PgVenStorage = db.into();
             let ven = repo
-                .delete(&"ven-1".parse().unwrap(), &Claims::ven_manager())
+                .delete(&"ven-1".parse().unwrap(), &VenPermissions::AllAllowed)
                 .await
                 .unwrap();
             assert_eq!(ven, ven_1());
 
             let ven = repo
-                .retrieve(&"ven-1".parse().unwrap(), &Claims::ven_manager())
+                .retrieve(&"ven-1".parse().unwrap(), &VenPermissions::AllAllowed)
                 .await;
             assert!(matches!(ven, Err(AppError::NotFound)));
 
             let ven = repo
-                .retrieve(&"ven-2".parse().unwrap(), &Claims::ven_manager())
+                .retrieve(&"ven-2".parse().unwrap(), &VenPermissions::AllAllowed)
                 .await
                 .unwrap();
             assert_eq!(ven, ven_2());
@@ -620,7 +635,7 @@ mod tests {
         async fn delete_not_existing(db: PgPool) {
             let repo: PgVenStorage = db.into();
             let ven = repo
-                .delete(&"ven-not-existing".parse().unwrap(), &Claims::ven_manager())
+                .delete(&"ven-not-existing".parse().unwrap(), &VenPermissions::AllAllowed)
                 .await;
             assert!(matches!(ven, Err(AppError::NotFound)));
         }

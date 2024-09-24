@@ -209,6 +209,7 @@ pub struct UserManagerUser(pub Claims);
 /// User claims extracted from the request, with the requirement that the user is a VEN manager
 pub struct VenManagerUser(pub Claims);
 
+
 #[async_trait]
 impl<S: Send + Sync> FromRequestParts<S> for User
 where
