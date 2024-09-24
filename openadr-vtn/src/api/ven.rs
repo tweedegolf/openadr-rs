@@ -28,7 +28,9 @@ pub async fn get_all(
 ) -> AppResponse<Vec<Ven>> {
     trace!(?query_params);
 
-    let vens = ven_source.retrieve_all(&query_params, &user.try_into()?).await?;
+    let vens = ven_source
+        .retrieve_all(&query_params, &user.try_into()?)
+        .await?;
 
     Ok(Json(vens))
 }
@@ -112,19 +114,25 @@ fn get_50() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::{self, Request, Response}, Router};
+    use axum::{
+        body::Body,
+        http::{self, Request, Response},
+        Router,
+    };
     use http_body_util::BodyExt;
     use openadr_wire::Ven;
     use serde::de::DeserializeOwned;
     use sqlx::PgPool;
     use tower::ServiceExt;
 
-    use crate::{api::test::jwt_test_token, data_source::PostgresStorage, jwt::{AuthRole, JwtManager}, state::AppState};
+    use crate::{
+        api::test::jwt_test_token,
+        data_source::PostgresStorage,
+        jwt::{AuthRole, JwtManager},
+        state::AppState,
+    };
 
-    async fn request_all(
-        app: Router,
-        token: &str,
-    ) -> Response<Body> {
+    async fn request_all(app: Router, token: &str) -> Response<Body> {
         app.oneshot(
             Request::builder()
                 .method(http::Method::GET)
@@ -132,8 +140,10 @@ mod tests {
                 .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
                 .body(Body::empty())
-                .unwrap()
-        ).await.unwrap()
+                .unwrap(),
+        )
+        .await
+        .unwrap()
     }
 
     async fn get_response_json<T: DeserializeOwned>(response: Response<Body>) -> T {
@@ -154,7 +164,7 @@ mod tests {
         let state = test_state(db);
         let token = jwt_test_token(&state, vec![AuthRole::VenManager]);
         let app = state.into_router();
-        
+
         let resp = request_all(app, &token).await;
 
         assert_eq!(resp.status(), http::StatusCode::OK);
@@ -165,13 +175,12 @@ mod tests {
         assert_eq!(vens[1].id.as_str(), "ven-1");
     }
 
-
     #[sqlx::test(fixtures("users", "vens"))]
     async fn get_all_ven_user(db: PgPool) {
         let state = test_state(db);
         let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
         let app = state.into_router();
-        
+
         let resp = request_all(app, &token).await;
 
         assert_eq!(resp.status(), http::StatusCode::OK);

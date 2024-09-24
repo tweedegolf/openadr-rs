@@ -71,10 +71,6 @@ impl Claims {
     pub(crate) fn any_business_user() -> Claims {
         Claims::new(vec![AuthRole::AnyBusiness])
     }
-
-    pub(crate) fn ven_manager() -> Claims {
-        Claims::new(vec![AuthRole::VenManager])
-    }
 }
 
 #[derive(Debug)]
@@ -208,7 +204,6 @@ pub struct UserManagerUser(pub Claims);
 
 /// User claims extracted from the request, with the requirement that the user is a VEN manager
 pub struct VenManagerUser(pub Claims);
-
 
 #[async_trait]
 impl<S: Send + Sync> FromRequestParts<S> for User

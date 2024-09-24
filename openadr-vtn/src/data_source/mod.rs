@@ -133,7 +133,6 @@ pub trait EventCrud:
 {
 }
 
-
 pub enum VenPermissions {
     AllAllowed,
     Specific(Vec<VenId>),
@@ -143,11 +142,12 @@ impl VenPermissions {
     pub fn as_value(&self) -> Option<Vec<String>> {
         match self {
             VenPermissions::AllAllowed => None,
-            VenPermissions::Specific(ids) => Some(ids.iter().map(|id| id.to_string()).collect::<Vec<_>>()),
+            VenPermissions::Specific(ids) => {
+                Some(ids.iter().map(|id| id.to_string()).collect::<Vec<_>>())
+            }
         }
     }
 }
-
 
 impl TryFrom<Claims> for VenPermissions {
     type Error = AppError;
@@ -158,7 +158,9 @@ impl TryFrom<Claims> for VenPermissions {
         } else if claims.is_ven() {
             Ok(VenPermissions::Specific(claims.ven_ids()))
         } else {
-            Err(AppError::Forbidden("User not authorized to access this vens"))
+            Err(AppError::Forbidden(
+                "User not authorized to access this vens",
+            ))
         }
     }
 }
