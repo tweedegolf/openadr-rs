@@ -133,6 +133,36 @@ pub trait EventCrud:
 {
 }
 
+
+pub enum VenPermissions {
+    AllAllowed,
+    Specific(Vec<VenId>),
+}
+
+impl VenPermissions {
+    pub fn as_value(&self) -> Option<Vec<String>> {
+        match self {
+            VenPermissions::AllAllowed => None,
+            VenPermissions::Specific(ids) => Some(ids.iter().map(|id| id.to_string()).collect::<Vec<_>>()),
+        }
+    }
+}
+
+
+impl TryFrom<Claims> for VenPermissions {
+    type Error = AppError;
+
+    fn try_from(claims: Claims) -> Result<Self, Self::Error> {
+        if claims.is_ven_manager() {
+            Ok(VenPermissions::AllAllowed)
+        } else if claims.is_ven() {
+            Ok(VenPermissions::Specific(claims.ven_ids()))
+        } else {
+            Err(AppError::Forbidden("User not authorized to access this vens"))
+        }
+    }
+}
+
 pub trait VenCrud:
     Crud<
     Type = Ven,
@@ -140,7 +170,7 @@ pub trait VenCrud:
     NewType = VenContent,
     Error = AppError,
     Filter = crate::api::ven::QueryParams,
-    PermissionFilter = Claims,
+    PermissionFilter = VenPermissions,
 >
 {
 }
