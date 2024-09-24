@@ -119,7 +119,7 @@ create table resource
             primary key,
     created_date_time      timestamptz not null,
     modification_date_time timestamptz not null,
-    resource_name          text        not null,
+    resource_name          text        not null unique,
     ven_id                 text        not null references ven (id), -- TODO is this actually 'NOT NULL'?
     attributes             jsonb,
     targets                jsonb

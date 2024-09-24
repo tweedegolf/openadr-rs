@@ -201,7 +201,7 @@ impl Crud for PgVenStorage {
         let mut vens: Vec<Ven> = sqlx::query_as!(
             PostgresVen,
             r#"
-            SELECT
+            SELECT DISTINCT
                 v.id AS "id!", 
                 v.created_date_time AS "created_date_time!", 
                 v.modification_date_time AS "modification_date_time!",
