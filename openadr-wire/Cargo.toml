@@ -18,7 +18,6 @@ iso8601-duration.workspace = true
 thiserror.workspace = true
 http.workspace = true
 validator.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
