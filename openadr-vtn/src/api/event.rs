@@ -571,7 +571,7 @@ mod test {
             let token = jwt_test_token(
                 &state,
                 vec![
-                    AuthRole::VEN("ven-1".to_string()),
+                    AuthRole::VEN("ven-1".parse().unwrap()),
                     AuthRole::Business("business-2".to_string()),
                 ],
             );
@@ -584,19 +584,19 @@ mod test {
             let (state, _) = state_with_events(vec![], db).await;
             let mut app = state.clone().into_router();
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
             let response = get_help("event-3", &token, &mut app).await;
             assert_eq!(response.status(), StatusCode::OK);
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-2".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-2".parse().unwrap())]);
             let response = get_help("event-3", &token, &mut app).await;
             assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
             let token = jwt_test_token(
                 &state,
                 vec![
-                    AuthRole::VEN("ven-2".to_string()),
-                    AuthRole::VEN("ven-1".to_string()),
+                    AuthRole::VEN("ven-2".parse().unwrap()),
+                    AuthRole::VEN("ven-1".parse().unwrap()),
                 ],
             );
             let response = get_help("event-3", &token, &mut app).await;
@@ -605,7 +605,7 @@ mod test {
             let token = jwt_test_token(
                 &state,
                 vec![
-                    AuthRole::VEN("ven-2".to_string()),
+                    AuthRole::VEN("ven-2".parse().unwrap()),
                     AuthRole::Business("business-2".to_string()),
                 ],
             );
@@ -618,7 +618,7 @@ mod test {
             let (state, _) = state_with_events(vec![], db).await;
             let mut app = state.clone().into_router();
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
             let response = retrieve_all_with_filter_help(&mut app, "", &token).await;
             assert_eq!(response.status(), StatusCode::OK);
             let body = response.into_body().collect().await.unwrap().to_bytes();
@@ -628,8 +628,8 @@ mod test {
             let token = jwt_test_token(
                 &state,
                 vec![
-                    AuthRole::VEN("ven-1".to_string()),
-                    AuthRole::VEN("ven-2".to_string()),
+                    AuthRole::VEN("ven-1".parse().unwrap()),
+                    AuthRole::VEN("ven-2".parse().unwrap()),
                 ],
             );
             let response = retrieve_all_with_filter_help(&mut app, "", &token).await;
@@ -641,7 +641,7 @@ mod test {
             // VEN should not be able to filter on other ven names,
             // even if they have a common set of events,
             // as this would leak information about which events the VENs have in common.
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
             let response = retrieve_all_with_filter_help(
                 &mut app,
                 "targetType=VEN_NAME&targetValues=ven-2-name",
@@ -710,7 +710,7 @@ mod test {
             let (state, _) = state_with_events(vec![], db).await;
             let mut app = state.clone().into_router();
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
             let response = help_create_event(&mut app, &default_event_content(), &token).await;
             assert_eq!(response.status(), StatusCode::FORBIDDEN);
 

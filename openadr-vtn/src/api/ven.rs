@@ -39,7 +39,7 @@ pub async fn get(
     User(user): User,
 ) -> AppResponse<Ven> {
     if user.is_ven() {
-        if !user.ven_ids().iter().any(|vid| vid == id.as_str()) {
+        if !user.ven_ids().iter().any(|vid| *vid == id) {
             return Err(AppError::Forbidden("User does not have access to this VEN"));
         }
     } else if !user.is_ven_manager() {

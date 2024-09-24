@@ -10,6 +10,7 @@ use axum_extra::{
     TypedHeader,
 };
 use jsonwebtoken::{encode, DecodingKey, EncodingKey, Header};
+use openadr_wire::ven::VenId;
 use tracing::trace;
 
 use crate::error::AppError;
@@ -26,7 +27,7 @@ pub enum AuthRole {
     VenManager,
     Business(String),
     AnyBusiness,
-    VEN(String),
+    VEN(VenId),
 }
 
 impl AuthRole {
@@ -83,12 +84,25 @@ pub enum BusinessIds {
 }
 
 impl Claims {
-    pub fn ven_ids(&self) -> Vec<String> {
+    pub fn ven_ids(&self) -> Vec<VenId> {
         self.roles
             .iter()
             .filter_map(|role| {
                 if let AuthRole::VEN(id) = role {
                     Some(id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn ven_ids_string(&self) -> Vec<String> {
+        self.roles
+            .iter()
+            .filter_map(|role| {
+                if let AuthRole::VEN(id) = role {
+                    Some(id.to_string())
                 } else {
                     None
                 }

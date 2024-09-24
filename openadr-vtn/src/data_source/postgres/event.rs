@@ -254,7 +254,7 @@ impl Crud for PgEventStorage {
             "#,
             id.as_str(),
             user.is_ven(),
-            &user.ven_ids(),
+            &user.ven_ids_string(),
             user.is_business(),
             business_ids.as_deref(),
         )
@@ -304,7 +304,7 @@ impl Crud for PgEventStorage {
             serde_json::to_value(pg_filter.targets)
                 .map_err(AppError::SerdeJsonInternalServerError)?,
             user.is_ven(),
-            &user.ven_ids(),
+            &user.ven_ids_string(),
             user.is_business(),
             business_ids.as_deref(),
             pg_filter.skip,

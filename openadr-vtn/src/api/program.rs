@@ -559,19 +559,19 @@ mod test {
             let body = response.into_body().collect().await.unwrap().to_bytes();
             let program: Program = serde_json::from_slice(&body).unwrap();
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
             let response = get_help(&mut app, &token, program.id.as_str()).await;
             assert_eq!(response.status(), StatusCode::OK);
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-2".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-2".parse().unwrap())]);
             let response = get_help(&mut app, &token, program.id.as_str()).await;
             assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
             let token = jwt_test_token(
                 &state,
                 vec![
-                    AuthRole::VEN("ven-2".to_string()),
-                    AuthRole::VEN("ven-1".to_string()),
+                    AuthRole::VEN("ven-2".parse().unwrap()),
+                    AuthRole::VEN("ven-1".parse().unwrap()),
                 ],
             );
             let response = get_help(&mut app, &token, program.id.as_str()).await;
@@ -583,7 +583,7 @@ mod test {
             let (state, _) = state_with_programs(vec![], db).await;
             let mut app = state.clone().into_router();
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
             let response = retrieve_all_with_filter_help(&mut app, "", &token).await;
             assert_eq!(response.status(), StatusCode::OK);
             let body = response.into_body().collect().await.unwrap().to_bytes();
@@ -596,7 +596,7 @@ mod test {
             names.sort();
             assert_eq!(names, vec!["program-1", "program-3"]);
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-2".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-2".parse().unwrap())]);
             let response = retrieve_all_with_filter_help(&mut app, "", &token).await;
             assert_eq!(response.status(), StatusCode::OK);
             let body = response.into_body().collect().await.unwrap().to_bytes();
@@ -609,7 +609,7 @@ mod test {
             names.sort();
             assert_eq!(names, vec!["program-1", "program-2"]);
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-2".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-2".parse().unwrap())]);
             let response = retrieve_all_with_filter_help(
                 &mut app,
                 "targetType=VEN_NAME&targetValues=ven-1",
@@ -624,8 +624,8 @@ mod test {
             let token = jwt_test_token(
                 &state,
                 vec![
-                    AuthRole::VEN("ven-2".to_string()),
-                    AuthRole::VEN("ven-1".to_string()),
+                    AuthRole::VEN("ven-2".parse().unwrap()),
+                    AuthRole::VEN("ven-1".parse().unwrap()),
                 ],
             );
             let response = retrieve_all_with_filter_help(&mut app, "", &token).await;
@@ -646,7 +646,7 @@ mod test {
             let (state, _) = state_with_programs(vec![], db).await;
             let mut app = state.clone().into_router();
 
-            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".to_string())]);
+            let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
             let response = help_create_program(&mut app, &token, &default_content()).await;
             assert_eq!(response.status(), StatusCode::FORBIDDEN);
 

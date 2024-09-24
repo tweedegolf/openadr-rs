@@ -294,7 +294,7 @@ impl Crud for PgProgramStorage {
             "#,
             id.as_str(),
             user.is_ven(),
-            &user.ven_ids()
+            &user.ven_ids_string()
         )
         .fetch_one(&self.db)
         .await?
@@ -346,7 +346,7 @@ impl Crud for PgProgramStorage {
             serde_json::to_value(pg_filter.targets)
                 .map_err(AppError::SerdeJsonInternalServerError)?,
             user.is_ven(),
-            &user.ven_ids(),
+            &user.ven_ids_string(),
             pg_filter.skip,
             pg_filter.limit,
         )

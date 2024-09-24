@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, State},
+    async_trait,
+    extract::{FromRef, FromRequestParts, Path, State},
+    http::request::Parts,
     Json,
 };
 use openadr_wire::ven::VenId;
@@ -19,14 +21,43 @@ use crate::{
     api::{AppResponse, ValidatedJson, ValidatedQuery},
     data_source::ResourceCrud,
     error::AppError,
-    jwt::{User, VenManagerUser},
+    jwt::{Claims, JwtManager, User},
 };
+
+pub struct ResourceUser(Claims);
+
+#[async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for ResourceUser
+where
+    Arc<JwtManager>: FromRef<S>,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let User(user_claims) = User::from_request_parts(parts, state).await?;
+        let Path(ven_id): Path<VenId> = Path::from_request_parts(parts, state)
+            .await
+            .map_err(|_| AppError::BadRequest("a valid VEN id is required"))?;
+
+        if user_claims.is_ven_manager() {
+            return Ok(ResourceUser(user_claims));
+        }
+
+        if user_claims.is_ven() && user_claims.ven_ids().contains(&ven_id) {
+            return Ok(ResourceUser(user_claims));
+        }
+
+        Err(AppError::Forbidden(
+            "User not authorized to access this resource",
+        ))
+    }
+}
 
 pub async fn get_all(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     Path(ven_id): Path<VenId>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
-    VenManagerUser(user): VenManagerUser,
+    ResourceUser(user): ResourceUser,
 ) -> AppResponse<Vec<Resource>> {
     trace!(?query_params);
 
@@ -41,7 +72,7 @@ pub async fn get(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     Path(ven_id): Path<VenId>,
     Path(id): Path<ResourceId>,
-    User(user): User,
+    ResourceUser(user): ResourceUser,
 ) -> AppResponse<Resource> {
     let ven = resource_source.retrieve(&id, ven_id, &user).await?;
 
@@ -50,7 +81,7 @@ pub async fn get(
 
 pub async fn add(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
-    VenManagerUser(user): VenManagerUser,
+    ResourceUser(user): ResourceUser,
     Path(ven_id): Path<VenId>,
     ValidatedJson(new_resource): ValidatedJson<ResourceContent>,
 ) -> Result<(StatusCode, Json<Resource>), AppError> {
@@ -63,7 +94,7 @@ pub async fn edit(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     Path(ven_id): Path<VenId>,
     Path(id): Path<ResourceId>,
-    VenManagerUser(user): VenManagerUser,
+    ResourceUser(user): ResourceUser,
     ValidatedJson(content): ValidatedJson<ResourceContent>,
 ) -> AppResponse<Resource> {
     let resource = resource_source.update(&id, ven_id, content, &user).await?;
@@ -77,7 +108,7 @@ pub async fn delete(
     State(resource_source): State<Arc<dyn ResourceCrud>>,
     Path(ven_id): Path<VenId>,
     Path(id): Path<ResourceId>,
-    VenManagerUser(user): VenManagerUser,
+    ResourceUser(user): ResourceUser,
 ) -> AppResponse<Resource> {
     let resource = resource_source.delete(&id, ven_id, &user).await?;
     info!(%id, "deleted resource");
