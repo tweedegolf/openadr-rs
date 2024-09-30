@@ -39,7 +39,7 @@ jobs:
             features: "--all-features"
     steps:
       - name: Checkout sources
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
         with:
           persist-credentials: false
 
@@ -58,7 +58,7 @@ jobs:
           target: ${{ matrix.target }}
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@7348990d6a11d92f3e482c9b1bb48cf31ab7f658 # v2.44.7
+        uses: taiki-e/install-action@9bef7e9c3d7c7aa986ef19933b0722880ae377e0 # v2.44.13
         with:
           tool: cargo-llvm-cov
 
@@ -97,7 +97,7 @@ jobs:
     env:
       SQLX_OFFLINE: true
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
         with:
           persist-credentials: false
 
@@ -107,7 +107,7 @@ jobs:
           toolchain: nightly
 
       - name: Install udeps
-        uses: taiki-e/install-action@7348990d6a11d92f3e482c9b1bb48cf31ab7f658 # v2.44.7
+        uses: taiki-e/install-action@9bef7e9c3d7c7aa986ef19933b0722880ae377e0 # v2.44.13
         with:
           tool: cargo-udeps
 
@@ -118,7 +118,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
         with:
           persist-credentials: false
 
@@ -152,7 +152,7 @@ jobs:
     env:
       SQLX_OFFLINE: true
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
         with:
           persist-credentials: false
 
@@ -166,13 +166,13 @@ jobs:
       # Use zig as our C compiler for convenient cross-compilation. We run into rustls having a dependency on `ring`.
       # This crate uses C and assembly code, and because of its build scripts, `cargo clippy` needs to be able to compile
       # that code for our target.
-      - uses: goto-bus-stop/setup-zig@7ab2955eb728f5440978d5824358023be3a2802d # v2.2.0
+      - uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2.2.1
         with:
           version: 0.9.0
         if: ${{matrix.use_zig}}
 
       - name: Install cargo-zigbuild
-        uses: taiki-e/install-action@7348990d6a11d92f3e482c9b1bb48cf31ab7f658 # v2.44.7
+        uses: taiki-e/install-action@9bef7e9c3d7c7aa986ef19933b0722880ae377e0 # v2.44.13
         with:
           tool: cargo-zigbuild
         if: ${{matrix.use_zig}}
@@ -193,7 +193,7 @@ jobs:
     name: Audit dependencies
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+    - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
 
     - uses: EmbarkStudios/cargo-deny-action@8371184bd11e21dcf8ac82ebf8c9c9f74ebf7268
       with:
