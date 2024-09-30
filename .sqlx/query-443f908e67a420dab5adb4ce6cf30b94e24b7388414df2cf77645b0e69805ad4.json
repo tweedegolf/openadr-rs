@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO user_business (user_id, business_id) VALUES ($1, NULL)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "443f908e67a420dab5adb4ce6cf30b94e24b7388414df2cf77645b0e69805ad4"
+}

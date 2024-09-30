@@ -1,10 +1,16 @@
 use crate::{
-    data_source::{postgres::PgId, AuthInfo, AuthSource},
+    data_source::{postgres::PgId, AuthInfo, AuthSource, UserDetails},
+    error::AppError,
     jwt::AuthRole,
 };
+use argon2::{
+    password_hash::{rand_core::OsRng, SaltString},
+    Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
+};
 use axum::async_trait;
-use openadr_wire::IdentifierError;
-use sqlx::PgPool;
+use chrono::{DateTime, Utc};
+use sqlx::{PgConnection, PgPool};
+use tracing::warn;
 
 pub struct PgAuthSource {
     db: PgPool,
@@ -17,79 +23,438 @@ impl From<PgPool> for PgAuthSource {
 }
 
 #[derive(Debug)]
-struct MaybePgId {
-    id: Option<String>,
+struct IntermediateUser {
+    id: String,
+    reference: String,
+    description: Option<String>,
+    client_ids: serde_json::Value,
+    created: DateTime<Utc>,
+    modified: DateTime<Utc>,
+    is_business_user: bool,
+    business_ids: serde_json::Value,
+    is_ven_user: bool,
+    ven_ids: serde_json::Value,
+    is_user_manager: bool,
+    is_ven_manager: bool,
+}
+
+impl TryFrom<IntermediateUser> for UserDetails {
+    type Error = AppError;
+
+    fn try_from(u: IntermediateUser) -> Result<Self, Self::Error> {
+        let mut roles = Vec::new();
+        if u.is_business_user {
+            let business_ids: Vec<Option<String>> = serde_json::from_value(u.business_ids)
+                .map_err(|err| {
+                    warn!(
+                        user_id = u.id,
+                        "failed to deserialize user associated businesses: {err}"
+                    );
+                    AppError::SerdeJsonInternalServerError(err)
+                })?;
+            roles.append(
+                &mut business_ids
+                    .into_iter()
+                    .map(|id| match id {
+                        None => Ok(AuthRole::AnyBusiness),
+                        Some(id) => Ok(AuthRole::Business(id)),
+                    })
+                    .collect::<Result<Vec<_>, AppError>>()?,
+            )
+        }
+
+        if u.is_ven_user {
+            let ven_ids: Vec<String> = serde_json::from_value(u.ven_ids).map_err(|err| {
+                warn!(
+                    user_id = u.id,
+                    "failed to deserialize user associated vens: {err}"
+                );
+                AppError::SerdeJsonInternalServerError(err)
+            })?;
+            roles.append(
+                &mut ven_ids
+                    .into_iter()
+                    .map(|id| Ok(AuthRole::VEN(id.parse()?)))
+                    .collect::<Result<Vec<_>, AppError>>()?,
+            )
+        }
+
+        if u.is_user_manager {
+            roles.push(AuthRole::UserManager);
+        }
+
+        if u.is_ven_manager {
+            roles.push(AuthRole::VenManager)
+        }
+
+        let client_ids = serde_json::from_value(u.client_ids).map_err(|err| {
+            warn!(
+                user_id = u.id,
+                "failed to deserialize user client ids: {err}"
+            );
+            AppError::SerdeJsonInternalServerError(err)
+        })?;
+
+        Ok(Self {
+            id: u.id,
+            reference: u.reference,
+            description: u.description,
+            roles,
+            client_ids,
+            created: u.created,
+            modified: u.modified,
+        })
+    }
+}
+
+struct IdAndSecret {
+    id: String,
+    client_secret: String,
 }
 
 #[async_trait]
 impl AuthSource for PgAuthSource {
-    async fn get_user(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo> {
-        let vens = sqlx::query_as!(
+    async fn check_credentials(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo> {
+        let mut tx = self
+            .db
+            .begin()
+            .await
+            .inspect_err(|err| warn!(client_id, "failed to open transaction: {err}"))
+            .ok()?;
+
+        let db_entry = sqlx::query_as!(
+            IdAndSecret,
+            r#"
+            SELECT id,
+                   client_secret
+            FROM "user"
+                JOIN user_credentials ON user_id = id
+            WHERE client_id = $1
+            "#,
+            client_id,
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .ok()?;
+
+        let parsed_hash = PasswordHash::new(&db_entry.client_secret)
+            .inspect_err(|err| warn!("Failed to parse client_secret_hash in DB: {}", err))
+            .ok()?;
+
+        Argon2::default()
+            .verify_password(client_secret.as_bytes(), &parsed_hash)
+            .ok()?;
+
+        let user = Self::get_user(&mut tx, &db_entry.id)
+            .await
+            .inspect_err(|err| warn!(client_id, "error fetching user: {err}"))
+            .ok()?;
+
+        Some(AuthInfo {
+            client_id: client_id.to_string(),
+            roles: user.roles,
+        })
+    }
+
+    async fn get_user(&self, user_id: &str) -> Result<UserDetails, AppError> {
+        let mut tx = self.db.begin().await?;
+        Self::get_user(&mut tx, user_id).await
+    }
+
+    async fn get_all_users(&self) -> Result<Vec<UserDetails>, AppError> {
+        sqlx::query_as!(
+            IntermediateUser,
+            r#"
+            SELECT u.*,
+                   json_arrayagg(c.client_id)                AS "client_ids!",
+                   b.user_id IS NOT NULL                     AS "is_business_user!",
+                   json_arrayagg(b.business_id NULL ON NULL) AS business_ids,
+                   ven.user_id IS NOT NULL                   AS "is_ven_user!",
+                   json_arrayagg(ven.ven_id)                 AS ven_ids,
+                   um.user_id IS NOT NULL                    AS "is_user_manager!",
+                   vm.user_id IS NOT NULL                    AS "is_ven_manager!"
+            FROM "user" u
+                     LEFT JOIN user_credentials c ON c.user_id = u.id
+                     LEFT JOIN user_business b ON u.id = b.user_id
+                     LEFT JOIN user_manager um ON u.id = um.user_id
+                     LEFT JOIN user_ven ven ON u.id = ven.user_id
+                     LEFT JOIN ven_manager vm ON u.id = vm.user_id
+            GROUP BY u.id, b.user_id, um.user_id, ven.user_id, vm.user_id
+            "#,
+        )
+        .fetch_all(&self.db)
+        .await?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect()
+    }
+
+    async fn add_user(
+        &self,
+        reference: &str,
+        description: Option<&str>,
+        roles: &[AuthRole],
+    ) -> Result<UserDetails, AppError> {
+        let mut tx = self.db.begin().await?;
+
+        let user = sqlx::query_as!(
             PgId,
             r#"
-            SELECT ven_id AS id
-            FROM "user" u
-              JOIN user_credentials c ON c.user_id = u.id
-              JOIN user_ven v ON v.user_id = u.id 
-            WHERE client_id = $1
-              AND client_secret = $2
+            INSERT INTO "user" (id, reference, description, created, modified)
+            VALUES (gen_random_uuid(), $1, $2, now(), now())
+            RETURNING id
             "#,
-            client_id,
-            client_secret
+            reference,
+            description
         )
-        .fetch_all(&self.db)
-        .await
-        .ok();
+        .fetch_one(&mut *tx)
+        .await?;
 
-        let businesses = sqlx::query_as!(
-            MaybePgId,
-            r#"
-            SELECT ub.business_id AS id 
-            FROM user_business ub
-                JOIN "user" u ON u.id = ub.user_id
-                JOIN user_credentials c ON c.user_id = u.id
-            WHERE client_id = $1
-              AND client_secret = $2
-            "#,
-            client_id,
-            client_secret
-        )
-        .fetch_all(&self.db)
-        .await
-        .ok();
-
-        let mut ven_roles = vens
-            .and_then(|vens| {
-                vens.into_iter()
-                    .map(|ven| Ok(AuthRole::VEN(ven.id.parse()?)))
-                    .collect::<Result<Vec<_>, IdentifierError>>()
-                    .ok()
-            })
-            .unwrap_or_default();
-
-        let mut business_roles = businesses
-            .map(|vens| {
-                vens.into_iter()
-                    .map(|ven| {
-                        if let Some(id) = ven.id {
-                            AuthRole::Business(id)
-                        } else {
-                            AuthRole::AnyBusiness
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        ven_roles.append(&mut business_roles);
-
-        if ven_roles.is_empty() {
-            None
-        } else {
-            Some(AuthInfo {
-                client_id: client_id.to_string(),
-                roles: ven_roles,
-            })
+        for role in roles {
+            Self::add_role(&mut tx, &user.id, role)
+                .await
+                .inspect_err(|err| {
+                    warn!(
+                        "Failed to add role {:?} for new user {:?}: {}",
+                        role, user, err
+                    )
+                })?;
         }
+
+        let user = Self::get_user(&mut tx, &user.id)
+            .await
+            .inspect_err(|err| warn!("cannot find user just created: {}", err))?;
+
+        tx.commit().await?;
+        Ok(user)
+    }
+
+    async fn add_credentials(
+        &self,
+        user_id: &str,
+        client_id: &str,
+        client_secret: &str,
+    ) -> Result<UserDetails, AppError> {
+        let salt = SaltString::generate(&mut OsRng);
+
+        let argon2 = Argon2::default();
+        let hash = argon2
+            .hash_password(client_secret.as_bytes(), &salt)?
+            .to_string();
+
+        let mut tx = self.db.begin().await?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO user_credentials 
+                (user_id, client_id, client_secret) 
+            VALUES 
+                ($1, $2, $3)
+            "#,
+            user_id,
+            client_id,
+            &hash
+        )
+        .execute(&mut *tx)
+        .await?;
+        let user = Self::get_user(&mut tx, user_id).await?;
+        tx.commit().await?;
+
+        Ok(user)
+    }
+
+    async fn remove_credentials(
+        &self,
+        user_id: &str,
+        client_id: &str,
+    ) -> Result<UserDetails, AppError> {
+        let mut tx = self.db.begin().await?;
+        sqlx::query!(
+            r#"
+            DELETE FROM user_credentials WHERE user_id = $1 AND client_id = $2
+            "#,
+            user_id,
+            client_id
+        )
+        .execute(&mut *tx)
+        .await?;
+        let user = Self::get_user(&mut tx, user_id).await?;
+        tx.commit().await?;
+        Ok(user)
+    }
+
+    async fn remove_user(&self, user_id: &str) -> Result<UserDetails, AppError> {
+        let mut tx = self.db.begin().await?;
+        let user = Self::get_user(&mut tx, user_id).await?;
+        sqlx::query!(
+            r#"
+            DELETE FROM "user" WHERE id = $1
+            "#,
+            user_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(user)
+    }
+
+    async fn edit_user(
+        &self,
+        user_id: &str,
+        reference: &str,
+        description: Option<&str>,
+        roles: &[AuthRole],
+    ) -> Result<UserDetails, AppError> {
+        let mut tx = self.db.begin().await?;
+
+        sqlx::query!(
+            r#"
+            UPDATE "user" SET
+                reference = $2,
+                description = $3,
+                modified = now()
+            WHERE id = $1
+            "#,
+            user_id,
+            reference,
+            description
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        Self::delete_all_roles(&mut tx, user_id).await?;
+
+        for role in roles {
+            Self::add_role(&mut tx, user_id, role)
+                .await
+                .inspect_err(|err| {
+                    warn!(
+                        "Failed to add role {:?} for updated user {:?}: {}",
+                        role, user_id, err
+                    )
+                })?;
+        }
+        let user = Self::get_user(&mut tx, user_id)
+            .await
+            .inspect_err(|err| warn!("cannot find user just updated: {}", err))?;
+
+        tx.commit().await?;
+        Ok(user)
+    }
+}
+
+impl PgAuthSource {
+    async fn delete_all_roles(db: &mut PgConnection, user_id: &str) -> Result<(), AppError> {
+        sqlx::query!(
+            r#"
+            DELETE FROM user_ven WHERE user_id = $1 
+            "#,
+            user_id
+        )
+        .execute(&mut *db)
+        .await?;
+
+        sqlx::query!(
+            r#"
+            DELETE FROM user_business WHERE user_id = $1 
+            "#,
+            user_id
+        )
+        .execute(&mut *db)
+        .await?;
+
+        sqlx::query!(
+            r#"
+            DELETE FROM ven_manager WHERE user_id = $1 
+            "#,
+            user_id
+        )
+        .execute(&mut *db)
+        .await?;
+
+        sqlx::query!(
+            r#"
+            DELETE FROM user_manager WHERE user_id = $1 
+            "#,
+            user_id
+        )
+        .execute(&mut *db)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn add_role(
+        tx: &mut PgConnection,
+        user_id: &str,
+        role: &AuthRole,
+    ) -> Result<(), AppError> {
+        match role {
+            AuthRole::Business(b_id) => sqlx::query!(
+                r#"
+                INSERT INTO user_business (user_id, business_id) VALUES ($1, $2)
+                "#,
+                user_id,
+                b_id
+            ),
+            AuthRole::AnyBusiness => sqlx::query!(
+                r#"
+                INSERT INTO user_business (user_id, business_id) VALUES ($1, NULL)
+                "#,
+                user_id
+            ),
+            AuthRole::VEN(v_id) => sqlx::query!(
+                r#"
+                INSERT INTO user_ven (user_id, ven_id) VALUES ($1, $2)
+                "#,
+                user_id,
+                v_id.as_str()
+            ),
+            AuthRole::VenManager => sqlx::query!(
+                r#"
+                INSERT INTO ven_manager (user_id) VALUES ($1)
+                "#,
+                user_id
+            ),
+            AuthRole::UserManager => sqlx::query!(
+                r#"
+                INSERT INTO user_manager (user_id) VALUES ($1)
+                "#,
+                user_id
+            ),
+        }
+        .execute(&mut *tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_user(tx: &mut PgConnection, user_id: &str) -> Result<UserDetails, AppError> {
+        sqlx::query_as!(
+            IntermediateUser,
+            r#"
+            SELECT u.*,
+                   json_arrayagg(c.client_id)                AS "client_ids!",
+                   b.user_id IS NOT NULL                     AS "is_business_user!",
+                   json_arrayagg(b.business_id NULL ON NULL) AS business_ids,
+                   ven.user_id IS NOT NULL                   AS "is_ven_user!",
+                   json_arrayagg(ven.ven_id)                 AS ven_ids,
+                   um.user_id IS NOT NULL                    AS "is_user_manager!",
+                   vm.user_id IS NOT NULL                    AS "is_ven_manager!"
+            FROM "user" u
+                     LEFT JOIN user_credentials c ON c.user_id = u.id
+                     LEFT JOIN user_business b ON u.id = b.user_id
+                     LEFT JOIN user_manager um ON u.id = um.user_id
+                     LEFT JOIN user_ven ven ON u.id = ven.user_id
+                     LEFT JOIN ven_manager vm ON u.id = vm.user_id
+            WHERE u.id = $1
+            GROUP BY u.id, b.user_id, um.user_id, ven.user_id, vm.user_id
+            "#,
+            user_id
+        )
+        .fetch_one(&mut *tx)
+        .await?
+        .try_into()
     }
 }

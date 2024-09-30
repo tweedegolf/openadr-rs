@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT u.*,\n                   json_arrayagg(c.client_id)                AS \"client_ids!\",\n                   b.user_id IS NOT NULL                     AS \"is_business_user!\",\n                   json_arrayagg(b.business_id NULL ON NULL) AS business_ids,\n                   ven.user_id IS NOT NULL                   AS \"is_ven_user!\",\n                   json_arrayagg(ven.ven_id)                 AS ven_ids,\n                   um.user_id IS NOT NULL                    AS \"is_user_manager!\",\n                   vm.user_id IS NOT NULL                    AS \"is_ven_manager!\"\n            FROM \"user\" u\n                     LEFT JOIN user_credentials c ON c.user_id = u.id\n                     LEFT JOIN user_business b ON u.id = b.user_id\n                     LEFT JOIN user_manager um ON u.id = um.user_id\n                     LEFT JOIN user_ven ven ON u.id = ven.user_id\n                     LEFT JOIN ven_manager vm ON u.id = vm.user_id\n            WHERE u.id = $1\n            GROUP BY u.id, b.user_id, um.user_id, ven.user_id, vm.user_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "reference",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "modified",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "client_ids!",
+        "type_info": "Json"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_business_user!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "business_ids",
+        "type_info": "Json"
+      },
+      {
+        "ordinal": 8,
+        "name": "is_ven_user!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "ven_ids",
+        "type_info": "Json"
+      },
+      {
+        "ordinal": 10,
+        "name": "is_user_manager!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "is_ven_manager!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "1bdd2974acddd89b65e87a7ea39cd1e0bedc713e772b644dc275643a5bef8f8a"
+}

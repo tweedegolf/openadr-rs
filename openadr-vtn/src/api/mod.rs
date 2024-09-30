@@ -13,6 +13,7 @@ pub mod event;
 pub mod program;
 pub mod report;
 pub mod resource;
+pub mod user;
 pub mod ven;
 
 pub type AppResponse<T> = Result<Json<T>, AppError>;

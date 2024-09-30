@@ -1,3 +1,4 @@
+use argon2::password_hash;
 use axum::{
     extract::rejection::JsonRejection,
     http::StatusCode,
@@ -33,7 +34,7 @@ pub enum AppError {
     Conflict(String, Option<Box<dyn DatabaseError>>),
     #[cfg(feature = "sqlx")]
     #[error("Unprocessable Content: {0}")]
-    ForeignKeyConstrainstViolated(String, Option<Box<dyn DatabaseError>>),
+    ForeignKeyConstraintViolated(String, Option<Box<dyn DatabaseError>>),
     #[error("Authentication error: {0}")]
     Auth(String),
     #[cfg(feature = "sqlx")]
@@ -49,6 +50,9 @@ pub enum AppError {
     Identifier(#[from] IdentifierError),
     #[error("Method not allowed")]
     MethodNotAllowed,
+    #[cfg(feature = "sqlx")]
+    #[error("Password Hash error: {0}")]
+    PasswordHashError(password_hash::Error),
 }
 
 #[cfg(feature = "sqlx")]
@@ -60,13 +64,19 @@ impl From<sqlx::Error> for AppError {
                 Self::Conflict("Conflict".to_string(), Some(err))
             }
             sqlx::Error::Database(err) if err.is_foreign_key_violation() => {
-                Self::ForeignKeyConstrainstViolated(
+                Self::ForeignKeyConstraintViolated(
                     "A foreign key constraint is violated".to_string(),
                     Some(err),
                 )
             }
             _ => Self::Sql(err),
         }
+    }
+}
+
+impl From<password_hash::Error> for AppError {
+    fn from(hash_err: password_hash::Error) -> Self {
+        Self::PasswordHashError(hash_err)
     }
 }
 
@@ -202,7 +212,7 @@ impl AppError {
                     r#type: Default::default(),
                     title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
                     status: StatusCode::INTERNAL_SERVER_ERROR,
-                    detail: Some(err.to_string()),
+                    detail: None,
                     instance: Some(reference.to_string()),
                 }
             }
@@ -231,7 +241,7 @@ impl AppError {
                 }
             }
             #[cfg(feature = "sqlx")]
-            AppError::ForeignKeyConstrainstViolated(err, db_err) => {
+            AppError::ForeignKeyConstraintViolated(err, db_err) => {
                 trace!(%reference,
                     "Unprocessable Content: {}, DB details: {:?}",
                     err,
@@ -254,6 +264,18 @@ impl AppError {
                     title: Some(StatusCode::METHOD_NOT_ALLOWED.to_string()),
                     status: StatusCode::METHOD_NOT_ALLOWED,
                     detail: Some("See allow headers for allowed methods".to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::PasswordHashError(err) => {
+                warn!(%reference,
+                "Password hash error: {}",
+                err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    detail: Some("An internal error occurred".to_string()),
                     instance: Some(reference.to_string()),
                 }
             }

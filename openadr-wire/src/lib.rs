@@ -23,7 +23,7 @@ pub mod target;
 pub mod values_map;
 pub mod ven;
 
-mod serde_rfc3339 {
+pub mod serde_rfc3339 {
     use super::*;
 
     use chrono::{DateTime, TimeZone, Utc};

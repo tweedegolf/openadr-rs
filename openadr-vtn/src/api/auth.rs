@@ -74,7 +74,7 @@ impl IntoResponse for AccessTokenResponse {
 }
 
 /// RFC 6749 client credentials grant flow
-pub async fn token(
+pub(crate) async fn token(
     State(auth_source): State<Arc<dyn AuthSource>>,
     State(jwt_manager): State<Arc<JwtManager>>,
     authorization: Option<TypedHeader<Authorization<Basic>>>,
@@ -117,7 +117,10 @@ pub async fn token(
     };
 
     // check that the client_id and client_secret are valid
-    let Some(user) = auth_source.get_user(client_id, client_secret).await else {
+    let Some(user) = auth_source
+        .check_credentials(client_id, client_secret)
+        .await
+    else {
         return Err(OAuthError::new(OAuthErrorType::InvalidClient)
             .with_description("Invalid client_id or client_secret".to_string())
             .into());

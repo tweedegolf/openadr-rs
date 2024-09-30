@@ -9,7 +9,7 @@ use openadr_vtn::{jwt::JwtManager, state::AppState};
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
-        .with(fmt::layer())
+        .with(fmt::layer().with_file(true).with_line_number(true))
         .with(EnvFilter::from_default_env())
         .init();
 
