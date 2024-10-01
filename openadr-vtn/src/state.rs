@@ -64,7 +64,6 @@ impl AppState {
                     .put(resource::edit)
                     .delete(resource::delete),
             )
-            .route("/auth/register", post(auth::register))
             .route("/auth/token", post(auth::token))
             .route("/users", get(user::get_all).post(user::add_user))
             .route(

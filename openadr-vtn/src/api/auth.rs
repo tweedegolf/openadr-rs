@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{api::ValidatedForm, data_source::AuthSource, jwt::JwtManager, state::AppState};
+use crate::{api::ValidatedForm, data_source::AuthSource, jwt::JwtManager};
 use axum::{
     extract::State,
     http::{Response, StatusCode},
@@ -136,8 +136,4 @@ pub(crate) async fn token(
         expires_in: expiration.as_secs(),
         scope: None,
     })
-}
-
-pub async fn register(State(_state): State<AppState>) -> String {
-    todo!()
 }
