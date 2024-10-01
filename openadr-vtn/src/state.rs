@@ -10,9 +10,13 @@ use axum::{
     middleware,
     middleware::Next,
     response::IntoResponse,
+    routing::{delete, get, post},
 };
 use reqwest::StatusCode;
 use std::sync::Arc;
+use tower_http::trace::TraceLayer;
+
+use crate::api::{auth, event, program, report, resource, user, ven};
 
 #[derive(Clone, FromRef)]
 pub struct AppState {
@@ -29,11 +33,6 @@ impl AppState {
     }
 
     fn router_without_state() -> axum::Router<Self> {
-        use axum::routing::{get, post};
-        use tower_http::trace::TraceLayer;
-
-        use crate::api::{auth, event, program, report, resource, ven};
-
         axum::Router::new()
             .route("/programs", get(program::get_all).post(program::add))
             .route(
@@ -65,8 +64,19 @@ impl AppState {
                     .put(resource::edit)
                     .delete(resource::delete),
             )
-            .route("/auth/register", post(auth::register))
             .route("/auth/token", post(auth::token))
+            .route("/users", get(user::get_all).post(user::add_user))
+            .route(
+                "/users/:id",
+                get(user::get)
+                    .put(user::edit)
+                    .delete(user::delete_user)
+                    .post(user::add_credential),
+            )
+            .route(
+                "/users/:user_id/:client_id",
+                delete(user::delete_credential),
+            )
             .layer(middleware::from_fn(method_not_allowed))
             .layer(TraceLayer::new_for_http())
     }

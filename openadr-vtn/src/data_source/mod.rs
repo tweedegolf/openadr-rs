@@ -2,6 +2,7 @@
 mod postgres;
 
 use axum::async_trait;
+use chrono::{DateTime, Utc};
 use openadr_wire::{
     event::{EventContent, EventId},
     program::{ProgramContent, ProgramId},
@@ -10,10 +11,10 @@ use openadr_wire::{
     ven::{Ven, VenContent, VenId},
     Event, Program, Report,
 };
-use std::sync::Arc;
-
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresStorage;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::{
     error::AppError,
@@ -189,9 +190,55 @@ pub trait ResourceCrud:
 {
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct UserDetails {
+    pub(crate) id: String,
+    pub(crate) reference: String,
+    pub(crate) description: Option<String>,
+    pub(crate) roles: Vec<AuthRole>,
+    pub(crate) client_ids: Vec<String>,
+    #[serde(with = "openadr_wire::serde_rfc3339")]
+    pub(crate) created: DateTime<Utc>,
+    #[serde(with = "openadr_wire::serde_rfc3339")]
+    pub(crate) modified: DateTime<Utc>,
+}
+
+impl UserDetails {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
 #[async_trait]
 pub trait AuthSource: Send + Sync + 'static {
-    async fn get_user(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo>;
+    async fn check_credentials(&self, client_id: &str, client_secret: &str) -> Option<AuthInfo>;
+    async fn get_user(&self, user_id: &str) -> Result<UserDetails, AppError>;
+    async fn get_all_users(&self) -> Result<Vec<UserDetails>, AppError>;
+    async fn add_user(
+        &self,
+        reference: &str,
+        description: Option<&str>,
+        roles: &[AuthRole],
+    ) -> Result<UserDetails, AppError>;
+    async fn add_credential(
+        &self,
+        user_id: &str,
+        client_id: &str,
+        client_secret: &str,
+    ) -> Result<UserDetails, AppError>;
+    async fn remove_credentials(
+        &self,
+        user_id: &str,
+        client_id: &str,
+    ) -> Result<UserDetails, AppError>;
+    async fn remove_user(&self, user_id: &str) -> Result<UserDetails, AppError>;
+    async fn edit_user(
+        &self,
+        user_id: &str,
+        reference: &str,
+        description: Option<&str>,
+        roles: &[AuthRole],
+    ) -> Result<UserDetails, AppError>;
 }
 
 pub trait DataSource: Send + Sync + 'static {

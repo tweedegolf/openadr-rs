@@ -75,18 +75,17 @@ create unique index report_report_name_uindex
 
 create table "user"
 (
-    -- TODO maybe add a (human friendly) name or reference
-    id text not null
-        constraint user_pk
-            primary key
+    id          text primary key,
+    reference   text        not null,
+    description text,
+    created     timestamptz not null,
+    modified    timestamptz not null
 );
 
 create table user_credentials
 (
     user_id       text not null references "user" (id) on delete cascade,
-    client_id     text not null
-        constraint user_credentials_pk
-            primary key,
+    client_id     text primary key,
     client_secret text not null
     -- TODO maybe the credentials require their own role?
 );
@@ -137,13 +136,23 @@ create table ven_program
 create table user_business
 (
     user_id     text not null references "user" (id) on delete cascade,
-    business_id text references business (id) on delete cascade
+    business_id text not null references business (id) on delete cascade
 );
-
--- allow at most one null entry per business, counting as `AnyBusiness`
-create unique index null_test_user_business
-    on user_business (user_id, (business_id is null))
-    where business_id is null;
 
 create unique index uindex_user_business
     on user_business (user_id, business_id);
+
+create table ven_manager
+(
+    user_id text primary key references "user" (id) on delete cascade
+);
+
+create table user_manager
+(
+    user_id text primary key references "user" (id) on delete cascade
+);
+
+create table any_business_user
+(
+    user_id text primary key references "user" (id) on delete cascade
+);

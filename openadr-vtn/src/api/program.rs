@@ -21,7 +21,6 @@ use crate::{
     error::AppError,
     jwt::{BusinessUser, User},
 };
-
 pub async fn get_all(
     State(program_source): State<Arc<dyn ProgramCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,

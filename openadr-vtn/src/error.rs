@@ -1,5 +1,6 @@
+use argon2::password_hash;
 use axum::{
-    extract::rejection::JsonRejection,
+    extract::rejection::{FormRejection, JsonRejection},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -9,7 +10,7 @@ use openadr_wire::{problem::Problem, IdentifierError};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "sqlx")]
 use sqlx::error::DatabaseError;
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 use uuid::Uuid;
 
 #[derive(thiserror::Error, Debug)]
@@ -17,7 +18,9 @@ pub enum AppError {
     #[error("Invalid request: {0}")]
     Validation(#[from] validator::ValidationErrors),
     #[error("Invalid request: {0}")]
-    Json(#[from] JsonRejection),
+    Json(JsonRejection),
+    #[error("Invalid request: {0}")]
+    Form(FormRejection),
     #[error("Invalid request: {0}")]
     QueryParams(#[from] QueryRejection),
     #[error("Object not found")]
@@ -33,7 +36,7 @@ pub enum AppError {
     Conflict(String, Option<Box<dyn DatabaseError>>),
     #[cfg(feature = "sqlx")]
     #[error("Unprocessable Content: {0}")]
-    ForeignKeyConstrainstViolated(String, Option<Box<dyn DatabaseError>>),
+    ForeignKeyConstraintViolated(String, Option<Box<dyn DatabaseError>>),
     #[error("Authentication error: {0}")]
     Auth(String),
     #[cfg(feature = "sqlx")]
@@ -49,6 +52,11 @@ pub enum AppError {
     Identifier(#[from] IdentifierError),
     #[error("Method not allowed")]
     MethodNotAllowed,
+    #[cfg(feature = "sqlx")]
+    #[error("Password Hash error: {0}")]
+    PasswordHashError(password_hash::Error),
+    #[error("Unsupported Media Type: {0}")]
+    UnsupportedMediaType(String),
 }
 
 #[cfg(feature = "sqlx")]
@@ -60,13 +68,41 @@ impl From<sqlx::Error> for AppError {
                 Self::Conflict("Conflict".to_string(), Some(err))
             }
             sqlx::Error::Database(err) if err.is_foreign_key_violation() => {
-                Self::ForeignKeyConstrainstViolated(
+                Self::ForeignKeyConstraintViolated(
                     "A foreign key constraint is violated".to_string(),
                     Some(err),
                 )
             }
             _ => Self::Sql(err),
         }
+    }
+}
+
+impl From<JsonRejection> for AppError {
+    fn from(rejection: JsonRejection) -> Self {
+        match rejection {
+            JsonRejection::MissingJsonContentType(text) => {
+                AppError::UnsupportedMediaType(text.to_string())
+            }
+            _ => AppError::Json(rejection),
+        }
+    }
+}
+
+impl From<FormRejection> for AppError {
+    fn from(rejection: FormRejection) -> Self {
+        match rejection {
+            FormRejection::InvalidFormContentType(text) => {
+                AppError::UnsupportedMediaType(text.to_string())
+            }
+            _ => AppError::Form(rejection),
+        }
+    }
+}
+
+impl From<password_hash::Error> for AppError {
+    fn from(hash_err: password_hash::Error) -> Self {
+        Self::PasswordHashError(hash_err)
     }
 }
 
@@ -91,6 +127,19 @@ impl AppError {
             AppError::Json(err) => {
                 trace!(%reference,
                     "Received invalid JSON in request: {}",
+                    err
+                );
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::BAD_REQUEST.to_string()),
+                    status: StatusCode::BAD_REQUEST,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::Form(err) => {
+                trace!(%reference,
+                    "Received invalid form data: {}",
                     err
                 );
                 Problem {
@@ -202,7 +251,7 @@ impl AppError {
                     r#type: Default::default(),
                     title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
                     status: StatusCode::INTERNAL_SERVER_ERROR,
-                    detail: Some(err.to_string()),
+                    detail: None,
                     instance: Some(reference.to_string()),
                 }
             }
@@ -231,7 +280,7 @@ impl AppError {
                 }
             }
             #[cfg(feature = "sqlx")]
-            AppError::ForeignKeyConstrainstViolated(err, db_err) => {
+            AppError::ForeignKeyConstraintViolated(err, db_err) => {
                 trace!(%reference,
                     "Unprocessable Content: {}, DB details: {:?}",
                     err,
@@ -254,6 +303,28 @@ impl AppError {
                     title: Some(StatusCode::METHOD_NOT_ALLOWED.to_string()),
                     status: StatusCode::METHOD_NOT_ALLOWED,
                     detail: Some("See allow headers for allowed methods".to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::PasswordHashError(err) => {
+                warn!(%reference,
+                "Password hash error: {}",
+                err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    detail: Some("An internal error occurred".to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::UnsupportedMediaType(err) => {
+                info!(%reference, "Unsupported media type: {}", err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::UNSUPPORTED_MEDIA_TYPE.to_string()),
+                    status: StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                    detail: Some(err),
                     instance: Some(reference.to_string()),
                 }
             }
