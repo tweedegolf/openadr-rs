@@ -1,5 +1,5 @@
 use crate::{
-    api::AppResponse,
+    api::{AppResponse, ValidatedJson},
     data_source::{AuthSource, UserDetails},
     error::AppError,
     jwt::{AuthRole, UserManagerUser},
@@ -14,8 +14,9 @@ use serde::Serialize;
 use serde_with::serde_derive::Deserialize;
 use std::sync::Arc;
 use tracing::{info, trace};
+use validator::Validate;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Validate)]
 #[cfg_attr(test, derive(Serialize))]
 pub struct NewUser {
     reference: String,
@@ -23,7 +24,7 @@ pub struct NewUser {
     roles: Vec<AuthRole>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 #[cfg_attr(test, derive(Serialize, Default))]
 pub struct NewCredential {
     client_id: String,
@@ -53,7 +54,7 @@ pub async fn get(
 pub async fn add_user(
     State(auth_source): State<Arc<dyn AuthSource>>,
     UserManagerUser(_): UserManagerUser,
-    Json(new_user): Json<NewUser>,
+    ValidatedJson(new_user): ValidatedJson<NewUser>,
 ) -> Result<(StatusCode, Json<UserDetails>), AppError> {
     let user = auth_source
         .add_user(
@@ -70,7 +71,7 @@ pub async fn add_credential(
     State(auth_source): State<Arc<dyn AuthSource>>,
     Path(id): Path<String>,
     UserManagerUser(_): UserManagerUser,
-    Json(new): Json<NewCredential>,
+    ValidatedJson(new): ValidatedJson<NewCredential>,
 ) -> AppResponse<UserDetails> {
     let user = auth_source
         .add_credential(&id, &new.client_id, &new.client_secret)
@@ -87,7 +88,7 @@ pub async fn edit(
     State(auth_source): State<Arc<dyn AuthSource>>,
     Path(id): Path<String>,
     UserManagerUser(_): UserManagerUser,
-    Json(modified): Json<NewUser>,
+    ValidatedJson(modified): ValidatedJson<NewUser>,
 ) -> AppResponse<UserDetails> {
     let user = auth_source
         .edit_user(
@@ -126,9 +127,7 @@ pub async fn delete_credential(
 #[cfg(feature = "live-db-test")]
 mod test {
     use super::*;
-    use crate::{
-        api::test::jwt_test_token, data_source::PostgresStorage, jwt::JwtManager, state::AppState,
-    };
+    use crate::api::test::{jwt_test_token, state};
     use axum::{
         body::Body,
         http,
@@ -138,11 +137,6 @@ mod test {
     use http_body_util::BodyExt;
     use sqlx::PgPool;
     use tower::ServiceExt;
-
-    async fn state(db: PgPool) -> AppState {
-        let store = PostgresStorage::new(db).unwrap();
-        AppState::new(store, JwtManager::from_base64_secret("test").unwrap())
-    }
 
     fn user_1() -> UserDetails {
         UserDetails {

@@ -1,6 +1,6 @@
 use argon2::password_hash;
 use axum::{
-    extract::rejection::JsonRejection,
+    extract::rejection::{FormRejection, JsonRejection},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
@@ -18,7 +18,9 @@ pub enum AppError {
     #[error("Invalid request: {0}")]
     Validation(#[from] validator::ValidationErrors),
     #[error("Invalid request: {0}")]
-    Json(#[from] JsonRejection),
+    Json(JsonRejection),
+    #[error("Invalid request: {0}")]
+    Form(FormRejection),
     #[error("Invalid request: {0}")]
     QueryParams(#[from] QueryRejection),
     #[error("Object not found")]
@@ -76,6 +78,28 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
+impl From<JsonRejection> for AppError {
+    fn from(rejection: JsonRejection) -> Self {
+        match rejection {
+            JsonRejection::MissingJsonContentType(text) => {
+                AppError::UnsupportedMediaType(text.to_string())
+            }
+            _ => AppError::Json(rejection),
+        }
+    }
+}
+
+impl From<FormRejection> for AppError {
+    fn from(rejection: FormRejection) -> Self {
+        match rejection {
+            FormRejection::InvalidFormContentType(text) => {
+                AppError::UnsupportedMediaType(text.to_string())
+            }
+            _ => AppError::Form(rejection),
+        }
+    }
+}
+
 impl From<password_hash::Error> for AppError {
     fn from(hash_err: password_hash::Error) -> Self {
         Self::PasswordHashError(hash_err)
@@ -103,6 +127,19 @@ impl AppError {
             AppError::Json(err) => {
                 trace!(%reference,
                     "Received invalid JSON in request: {}",
+                    err
+                );
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::BAD_REQUEST.to_string()),
+                    status: StatusCode::BAD_REQUEST,
+                    detail: Some(err.to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::Form(err) => {
+                trace!(%reference,
+                    "Received invalid form data: {}",
                     err
                 );
                 Problem {

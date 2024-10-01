@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use crate::{api::ValidatedForm, data_source::AuthSource, jwt::JwtManager, state::AppState};
 use axum::{
-    extract::{Form, State},
+    extract::State,
     http::{Response, StatusCode},
     response::IntoResponse,
     Json,
@@ -12,10 +13,10 @@ use axum_extra::{
 };
 use openadr_wire::oauth::{OAuthError, OAuthErrorType};
 use reqwest::header;
+use serde::Deserialize;
+use validator::Validate;
 
-use crate::{data_source::AuthSource, jwt::JwtManager, state::AppState};
-
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct AccessTokenRequest {
     grant_type: String,
     // TODO: handle scope
@@ -78,7 +79,7 @@ pub(crate) async fn token(
     State(auth_source): State<Arc<dyn AuthSource>>,
     State(jwt_manager): State<Arc<JwtManager>>,
     authorization: Option<TypedHeader<Authorization<Basic>>>,
-    Form(request): Form<AccessTokenRequest>,
+    ValidatedForm(request): ValidatedForm<AccessTokenRequest>,
 ) -> Result<AccessTokenResponse, ResponseOAuthError> {
     if request.grant_type != "client_credentials" {
         return Err(OAuthError::new(OAuthErrorType::UnsupportedGrantType)
