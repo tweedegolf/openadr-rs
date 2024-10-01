@@ -13,7 +13,7 @@ use openadr_wire::{
 };
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresStorage;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::{
@@ -190,17 +190,17 @@ pub trait ResourceCrud:
 {
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct UserDetails {
-    id: String,
-    reference: String,
-    description: Option<String>,
-    roles: Vec<AuthRole>,
-    client_ids: Vec<String>,
+    pub(crate) id: String,
+    pub(crate) reference: String,
+    pub(crate) description: Option<String>,
+    pub(crate) roles: Vec<AuthRole>,
+    pub(crate) client_ids: Vec<String>,
     #[serde(with = "openadr_wire::serde_rfc3339")]
-    created: DateTime<Utc>,
+    pub(crate) created: DateTime<Utc>,
     #[serde(with = "openadr_wire::serde_rfc3339")]
-    modified: DateTime<Utc>,
+    pub(crate) modified: DateTime<Utc>,
 }
 
 impl UserDetails {
@@ -220,7 +220,7 @@ pub trait AuthSource: Send + Sync + 'static {
         description: Option<&str>,
         roles: &[AuthRole],
     ) -> Result<UserDetails, AppError>;
-    async fn add_credentials(
+    async fn add_credential(
         &self,
         user_id: &str,
         client_id: &str,

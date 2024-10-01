@@ -10,7 +10,7 @@ use openadr_wire::{problem::Problem, IdentifierError};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "sqlx")]
 use sqlx::error::DatabaseError;
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 use uuid::Uuid;
 
 #[derive(thiserror::Error, Debug)]
@@ -53,6 +53,8 @@ pub enum AppError {
     #[cfg(feature = "sqlx")]
     #[error("Password Hash error: {0}")]
     PasswordHashError(password_hash::Error),
+    #[error("Unsupported Media Type: {0}")]
+    UnsupportedMediaType(String),
 }
 
 #[cfg(feature = "sqlx")]
@@ -276,6 +278,16 @@ impl AppError {
                     title: Some(StatusCode::INTERNAL_SERVER_ERROR.to_string()),
                     status: StatusCode::INTERNAL_SERVER_ERROR,
                     detail: Some("An internal error occurred".to_string()),
+                    instance: Some(reference.to_string()),
+                }
+            }
+            AppError::UnsupportedMediaType(err) => {
+                info!(%reference, "Unsupported media type: {}", err);
+                Problem {
+                    r#type: Default::default(),
+                    title: Some(StatusCode::UNSUPPORTED_MEDIA_TYPE.to_string()),
+                    status: StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                    detail: Some(err),
                     instance: Some(reference.to_string()),
                 }
             }

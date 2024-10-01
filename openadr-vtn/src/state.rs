@@ -12,6 +12,7 @@ use axum::{
     response::IntoResponse,
     routing::{delete, get, post},
 };
+use http_body_util::BodyExt;
 use reqwest::StatusCode;
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
@@ -79,6 +80,7 @@ impl AppState {
                 delete(user::delete_credential),
             )
             .layer(middleware::from_fn(method_not_allowed))
+            .layer(middleware::from_fn(unsupported_media_type))
             .layer(TraceLayer::new_for_http())
     }
 
@@ -92,6 +94,25 @@ pub async fn method_not_allowed(req: Request, next: Next) -> impl IntoResponse {
     let status = resp.status();
     match status {
         StatusCode::METHOD_NOT_ALLOWED => Err(AppError::MethodNotAllowed),
+        _ => Ok(resp),
+    }
+}
+
+pub async fn unsupported_media_type(req: Request, next: Next) -> impl IntoResponse {
+    let resp = next.run(req).await;
+    let status = resp.status();
+    match status {
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => Err(AppError::UnsupportedMediaType(
+            String::from_utf8_lossy(
+                &resp
+                    .into_body()
+                    .collect()
+                    .await
+                    .unwrap_or_default()
+                    .to_bytes(),
+            )
+            .to_string(),
+        )),
         _ => Ok(resp),
     }
 }

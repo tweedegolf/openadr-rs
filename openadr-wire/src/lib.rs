@@ -72,7 +72,7 @@ where
 }
 
 /// A string that matches `/^[a-zA-Z0-9_-]*$/` with length in 1..=128
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Identifier(#[serde(deserialize_with = "identifier")] String);
 
 impl<'de> Deserialize<'de> for Identifier {
@@ -94,7 +94,11 @@ pub enum IdentifierError {
     InvalidLength(usize),
     #[error("identifier contains characters besides [a-zA-Z0-9_-]")]
     InvalidCharacter,
+    #[error("this identifier name is not allowed: {0}")]
+    ForbiddenName(String),
 }
+
+const FORBIDDEN_NAMES: &[&str] = &["null"];
 
 impl std::str::FromStr for Identifier {
     type Err = IdentifierError;
@@ -106,6 +110,8 @@ impl std::str::FromStr for Identifier {
             Err(IdentifierError::InvalidLength(s.len()))
         } else if !s.bytes().all(is_valid_character) {
             Err(IdentifierError::InvalidCharacter)
+        } else if FORBIDDEN_NAMES.contains(&s.to_ascii_lowercase().as_str()) {
+            Err(IdentifierError::ForbiddenName(s.to_string()))
         } else {
             Ok(Identifier(s.to_string()))
         }

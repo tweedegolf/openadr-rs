@@ -27,13 +27,12 @@ struct IntermediateUser {
     id: String,
     reference: String,
     description: Option<String>,
-    client_ids: serde_json::Value,
+    client_ids: Option<Vec<String>>,
     created: DateTime<Utc>,
     modified: DateTime<Utc>,
-    is_business_user: bool,
-    business_ids: serde_json::Value,
-    is_ven_user: bool,
-    ven_ids: serde_json::Value,
+    business_ids: Option<Vec<String>>,
+    ven_ids: Option<Vec<String>>,
+    is_any_business_user: bool,
     is_user_manager: bool,
     is_ven_manager: bool,
 }
@@ -43,34 +42,16 @@ impl TryFrom<IntermediateUser> for UserDetails {
 
     fn try_from(u: IntermediateUser) -> Result<Self, Self::Error> {
         let mut roles = Vec::new();
-        if u.is_business_user {
-            let business_ids: Vec<Option<String>> = serde_json::from_value(u.business_ids)
-                .map_err(|err| {
-                    warn!(
-                        user_id = u.id,
-                        "failed to deserialize user associated businesses: {err}"
-                    );
-                    AppError::SerdeJsonInternalServerError(err)
-                })?;
+        if let Some(business_ids) = u.business_ids {
             roles.append(
                 &mut business_ids
                     .into_iter()
-                    .map(|id| match id {
-                        None => Ok(AuthRole::AnyBusiness),
-                        Some(id) => Ok(AuthRole::Business(id)),
-                    })
+                    .map(|id| Ok(AuthRole::Business(id.to_string())))
                     .collect::<Result<Vec<_>, AppError>>()?,
             )
         }
 
-        if u.is_ven_user {
-            let ven_ids: Vec<String> = serde_json::from_value(u.ven_ids).map_err(|err| {
-                warn!(
-                    user_id = u.id,
-                    "failed to deserialize user associated vens: {err}"
-                );
-                AppError::SerdeJsonInternalServerError(err)
-            })?;
+        if let Some(ven_ids) = u.ven_ids {
             roles.append(
                 &mut ven_ids
                     .into_iter()
@@ -87,20 +68,16 @@ impl TryFrom<IntermediateUser> for UserDetails {
             roles.push(AuthRole::VenManager)
         }
 
-        let client_ids = serde_json::from_value(u.client_ids).map_err(|err| {
-            warn!(
-                user_id = u.id,
-                "failed to deserialize user client ids: {err}"
-            );
-            AppError::SerdeJsonInternalServerError(err)
-        })?;
+        if u.is_any_business_user {
+            roles.push(AuthRole::AnyBusiness)
+        }
 
         Ok(Self {
             id: u.id,
             reference: u.reference,
             description: u.description,
             roles,
-            client_ids,
+            client_ids: u.client_ids.unwrap_or_default(),
             created: u.created,
             modified: u.modified,
         })
@@ -166,20 +143,25 @@ impl AuthSource for PgAuthSource {
             IntermediateUser,
             r#"
             SELECT u.*,
-                   json_arrayagg(c.client_id)                AS "client_ids!",
-                   b.user_id IS NOT NULL                     AS "is_business_user!",
-                   json_arrayagg(b.business_id NULL ON NULL) AS business_ids,
-                   ven.user_id IS NOT NULL                   AS "is_ven_user!",
-                   json_arrayagg(ven.ven_id)                 AS ven_ids,
-                   um.user_id IS NOT NULL                    AS "is_user_manager!",
-                   vm.user_id IS NOT NULL                    AS "is_ven_manager!"
+                   array_agg(DISTINCT c.client_id) FILTER ( WHERE c.client_id IS NOT NULL )     AS client_ids,
+                   array_agg(DISTINCT b.business_id) FILTER ( WHERE b.business_id IS NOT NULL ) AS business_ids,
+                   array_agg(DISTINCT ven.ven_id) FILTER ( WHERE ven.ven_id IS NOT NULL )       AS ven_ids,
+                   ab.user_id IS NOT NULL                                                       AS "is_any_business_user!",
+                   um.user_id IS NOT NULL                                                       AS "is_user_manager!",
+                   vm.user_id IS NOT NULL                                                       AS "is_ven_manager!"
             FROM "user" u
                      LEFT JOIN user_credentials c ON c.user_id = u.id
+                     LEFT JOIN any_business_user ab ON u.id = ab.user_id
                      LEFT JOIN user_business b ON u.id = b.user_id
                      LEFT JOIN user_manager um ON u.id = um.user_id
                      LEFT JOIN user_ven ven ON u.id = ven.user_id
                      LEFT JOIN ven_manager vm ON u.id = vm.user_id
-            GROUP BY u.id, b.user_id, um.user_id, ven.user_id, vm.user_id
+            GROUP BY u.id,
+                     b.user_id,
+                     ab.user_id,
+                     um.user_id,
+                     ven.user_id,
+                     vm.user_id
             "#,
         )
         .fetch_all(&self.db)
@@ -229,7 +211,7 @@ impl AuthSource for PgAuthSource {
         Ok(user)
     }
 
-    async fn add_credentials(
+    async fn add_credential(
         &self,
         user_id: &str,
         client_id: &str,
@@ -366,6 +348,15 @@ impl PgAuthSource {
 
         sqlx::query!(
             r#"
+            DELETE FROM any_business_user WHERE user_id = $1 
+            "#,
+            user_id
+        )
+        .execute(&mut *db)
+        .await?;
+
+        sqlx::query!(
+            r#"
             DELETE FROM ven_manager WHERE user_id = $1 
             "#,
             user_id
@@ -400,7 +391,7 @@ impl PgAuthSource {
             ),
             AuthRole::AnyBusiness => sqlx::query!(
                 r#"
-                INSERT INTO user_business (user_id, business_id) VALUES ($1, NULL)
+                INSERT INTO any_business_user (user_id) VALUES ($1)
                 "#,
                 user_id
             ),
@@ -435,21 +426,26 @@ impl PgAuthSource {
             IntermediateUser,
             r#"
             SELECT u.*,
-                   json_arrayagg(c.client_id)                AS "client_ids!",
-                   b.user_id IS NOT NULL                     AS "is_business_user!",
-                   json_arrayagg(b.business_id NULL ON NULL) AS business_ids,
-                   ven.user_id IS NOT NULL                   AS "is_ven_user!",
-                   json_arrayagg(ven.ven_id)                 AS ven_ids,
-                   um.user_id IS NOT NULL                    AS "is_user_manager!",
-                   vm.user_id IS NOT NULL                    AS "is_ven_manager!"
+                   array_agg(DISTINCT c.client_id) FILTER ( WHERE c.client_id IS NOT NULL )     AS client_ids,
+                   array_agg(DISTINCT b.business_id) FILTER ( WHERE b.business_id IS NOT NULL ) AS business_ids,
+                   array_agg(DISTINCT ven.ven_id) FILTER ( WHERE ven.ven_id IS NOT NULL )       AS ven_ids,
+                   ab.user_id IS NOT NULL                                                       AS "is_any_business_user!",
+                   um.user_id IS NOT NULL                                                       AS "is_user_manager!",
+                   vm.user_id IS NOT NULL                                                       AS "is_ven_manager!"
             FROM "user" u
                      LEFT JOIN user_credentials c ON c.user_id = u.id
+                     LEFT JOIN any_business_user ab ON u.id = ab.user_id
                      LEFT JOIN user_business b ON u.id = b.user_id
                      LEFT JOIN user_manager um ON u.id = um.user_id
                      LEFT JOIN user_ven ven ON u.id = ven.user_id
                      LEFT JOIN ven_manager vm ON u.id = vm.user_id
             WHERE u.id = $1
-            GROUP BY u.id, b.user_id, um.user_id, ven.user_id, vm.user_id
+            GROUP BY u.id,
+                     b.user_id,
+                     ab.user_id,
+                     um.user_id,
+                     ven.user_id,
+                     vm.user_id
             "#,
             user_id
         )

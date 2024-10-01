@@ -21,6 +21,7 @@ pub struct JwtManager {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(PartialOrd, Ord))]
 #[serde(tag = "role", content = "id")]
 pub enum AuthRole {
     UserManager,

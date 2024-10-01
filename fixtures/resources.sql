@@ -1,8 +1,8 @@
-INSERT INTO resources (id,
+INSERT INTO resource (id,
                  created_date_time,
                  modification_date_time,
-                 resource_name
-                 ven_name,
+                 resource_name,
+                 ven_id,
                  attributes,
                  targets)
 VALUES ('resource-1',

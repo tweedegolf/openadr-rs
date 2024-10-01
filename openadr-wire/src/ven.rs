@@ -50,7 +50,7 @@ pub enum ObjectType {
     Ven,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq, PartialOrd, Ord)]
 pub struct VenId(pub(crate) Identifier);
 
 impl Display for VenId {
