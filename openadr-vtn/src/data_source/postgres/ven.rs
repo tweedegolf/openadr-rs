@@ -209,10 +209,14 @@ impl Crud for PgVenStorage {
                 v.attributes,
                 v.targets
             FROM ven v
-            LEFT JOIN resource r ON r.ven_id = v.id
+              LEFT JOIN resource r ON r.ven_id = v.id
+              LEFT JOIN LATERAL (
+                  SELECT v.id as v_id, 
+                         json_array(jsonb_array_elements(v.targets)) <@ $3::jsonb AS target_test )
+                  ON v.id = v_id
             WHERE ($1::text[] IS NULL OR v.ven_name = ANY($1))
               AND ($2::text[] IS NULL OR r.resource_name = ANY($2))
-              AND ($3::jsonb = '[]'::jsonb OR $3::jsonb <@ v.targets)
+              AND ($3::jsonb = '[]'::jsonb OR target_test)
               AND ($4::text[] IS NULL OR v.id = ANY($4))
             ORDER BY v.created_date_time DESC
             OFFSET $5 LIMIT $6

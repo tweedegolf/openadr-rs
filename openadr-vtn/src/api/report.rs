@@ -6,7 +6,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{info, trace};
+use tracing::{info, instrument};
 use validator::Validate;
 
 use openadr_wire::{
@@ -23,18 +23,18 @@ use crate::{
     jwt::{BusinessUser, User, VENUser},
 };
 
+#[instrument(skip(user, report_source))]
 pub async fn get_all(
     State(report_source): State<Arc<dyn ReportCrud>>,
     ValidatedQuery(query_params): ValidatedQuery<QueryParams>,
     User(user): User,
 ) -> AppResponse<Vec<Report>> {
-    trace!(?query_params);
-
     let reports = report_source.retrieve_all(&query_params, &user).await?;
 
     Ok(Json(reports))
 }
 
+#[instrument(skip(user, report_source))]
 pub async fn get(
     State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
@@ -44,6 +44,7 @@ pub async fn get(
     Ok(Json(report))
 }
 
+#[instrument(skip(user, report_source))]
 pub async fn add(
     State(report_source): State<Arc<dyn ReportCrud>>,
     VENUser(user): VENUser,
@@ -56,6 +57,7 @@ pub async fn add(
     Ok((StatusCode::CREATED, Json(report)))
 }
 
+#[instrument(skip(user, report_source))]
 pub async fn edit(
     State(report_source): State<Arc<dyn ReportCrud>>,
     Path(id): Path<ReportId>,
@@ -69,6 +71,7 @@ pub async fn edit(
     Ok(Json(report))
 }
 
+#[instrument(skip(user, report_source))]
 pub async fn delete(
     State(report_source): State<Arc<dyn ReportCrud>>,
     // TODO this contradicts the spec, which says that only VENs have write access

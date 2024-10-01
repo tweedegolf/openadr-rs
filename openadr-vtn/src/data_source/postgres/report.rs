@@ -14,7 +14,7 @@ use openadr_wire::{
     Report,
 };
 use sqlx::PgPool;
-use tracing::error;
+use tracing::{error, info, trace};
 
 #[async_trait]
 impl ReportCrud for PgReportStorage {}
@@ -105,13 +105,14 @@ impl Crud for PgReportStorage {
         .map(|id| id.id)
         .collect::<Vec<_>>();
 
-        if !user
-            .ven_ids()
-            .into_iter()
-            .any(|user_ven| permitted_vens.contains(&user_ven.to_string()))
+        if !permitted_vens.is_empty()
+            && !user
+                .ven_ids()
+                .into_iter()
+                .any(|user_ven| permitted_vens.contains(&user_ven.to_string()))
         {
             Err(AppError::NotFound)?
-        };
+        }
 
         let program_id = sqlx::query_as!(
             PgId,
@@ -129,7 +130,7 @@ impl Crud for PgReportStorage {
             ));
         }
 
-        Ok(sqlx::query_as!(
+        let report: Report = sqlx::query_as!(
             PostgresReport,
             r#"
             INSERT INTO report (id, created_date_time, modification_date_time, program_id, event_id, client_name, report_name, payload_descriptors, resources)
@@ -145,7 +146,11 @@ impl Crud for PgReportStorage {
         )
             .fetch_one(&self.db)
             .await?
-            .try_into()?)
+            .try_into()?;
+
+        info!(report_id = report.id.as_str(), "created report");
+
+        Ok(report)
     }
 
     async fn retrieve(
@@ -155,7 +160,7 @@ impl Crud for PgReportStorage {
     ) -> Result<Self::Type, Self::Error> {
         let business_ids = extract_business_ids(user);
 
-        Ok(sqlx::query_as!(
+        let report: Report = sqlx::query_as!(
             PostgresReport,
             r#"
             SELECT r.* 
@@ -173,7 +178,11 @@ impl Crud for PgReportStorage {
         )
         .fetch_one(&self.db)
         .await?
-        .try_into()?)
+        .try_into()?;
+
+        trace!(report_id = report.id.as_str(), "retrieved report");
+
+        Ok(report)
     }
 
     async fn retrieve_all(
@@ -183,7 +192,7 @@ impl Crud for PgReportStorage {
     ) -> Result<Vec<Self::Type>, Self::Error> {
         let business_ids = extract_business_ids(user);
 
-        Ok(sqlx::query_as!(
+        let reports = sqlx::query_as!(
             PostgresReport,
             r#"
             SELECT r.*
@@ -193,7 +202,7 @@ impl Crud for PgReportStorage {
             WHERE ($1::text IS NULL OR $1 like r.program_id)
               AND ($2::text IS NULL OR $2 like r.event_id)
               AND ($3::text IS NULL OR $3 like r.client_name)
-              AND (NOT $4 OR v.ven_id IS NULL OR v.ven_id = ANY($5)) 
+              AND (NOT $4 OR v.ven_id IS NULL OR v.ven_id = ANY($5))
               AND ($6::text[] IS NULL OR p.business_id = ANY($6))
             LIMIT $7 OFFSET $8
             "#,
@@ -210,7 +219,11 @@ impl Crud for PgReportStorage {
         .await?
         .into_iter()
         .map(TryInto::try_into)
-        .collect::<Result<_, _>>()?)
+        .collect::<Result<Vec<Report>, _>>()?;
+
+        trace!("retrieved {} reports", reports.len());
+
+        Ok(reports)
     }
 
     async fn update(
@@ -220,7 +233,7 @@ impl Crud for PgReportStorage {
         user: &Self::PermissionFilter,
     ) -> Result<Self::Type, Self::Error> {
         let business_ids = extract_business_ids(user);
-        Ok(sqlx::query_as!(
+        let report: Report = sqlx::query_as!(
             PostgresReport,
             r#"
             UPDATE report r
@@ -252,7 +265,11 @@ impl Crud for PgReportStorage {
         )
         .fetch_one(&self.db)
         .await?
-        .try_into()?)
+        .try_into()?;
+
+        info!(report_id = report.id.as_str(), "updated report");
+
+        Ok(report)
     }
 
     async fn delete(
@@ -262,7 +279,7 @@ impl Crud for PgReportStorage {
     ) -> Result<Self::Type, Self::Error> {
         let business_ids = extract_business_ids(user);
 
-        Ok(sqlx::query_as!(
+        let report: Report = sqlx::query_as!(
             PostgresReport,
             r#"
             DELETE FROM report r 
@@ -277,6 +294,10 @@ impl Crud for PgReportStorage {
         )
         .fetch_one(&self.db)
         .await?
-        .try_into()?)
+        .try_into()?;
+
+        info!(report_id = report.id.as_str(), "deleted report");
+
+        Ok(report)
     }
 }

@@ -332,10 +332,14 @@ impl Crud for PgProgramStorage {
               LEFT JOIN event e ON p.id = e.program_id
               LEFT JOIN ven_program vp ON p.id = vp.program_id
               LEFT JOIN ven v ON v.id = vp.ven_id
+              LEFT JOIN LATERAL ( 
+                  SELECT p.id as p_id, 
+                         json_array(jsonb_array_elements(p.targets)) <@ $4::jsonb AS target_test )
+                  ON p.id = p_id
             WHERE ($1::text[] IS NULL OR e.event_name = ANY($1))
               AND ($2::text[] IS NULL OR p.program_name = ANY($2))
               AND ($3::text[] IS NULL OR v.ven_name = ANY($3))
-              AND ($4::jsonb = '[]'::jsonb OR $4::jsonb <@ p.targets)
+              AND ($4::jsonb = '[]'::jsonb OR target_test)
               AND (NOT $5 OR v.id IS NULL OR v.id = ANY($6)) -- Filter for VEN ids
             GROUP BY p.id
             OFFSET $7 LIMIT $8

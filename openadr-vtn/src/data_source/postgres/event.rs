@@ -284,11 +284,15 @@ impl Crud for PgEventStorage {
               JOIN program p on p.id = e.program_id
               LEFT JOIN ven_program vp ON p.id = vp.program_id
               LEFT JOIN ven v ON v.id = vp.ven_id
+              LEFT JOIN LATERAL ( 
+                  SELECT e.id as e_id, 
+                         json_array(jsonb_array_elements(e.targets)) <@ $5::jsonb AS target_test )
+                  ON e.id = e_id
             WHERE ($1::text IS NULL OR e.program_id like $1)
               AND ($2::text[] IS NULL OR e.event_name = ANY($2))
               AND ($3::text[] IS NULL OR p.program_name = ANY($3))
               AND ($4::text[] IS NULL OR v.ven_name = ANY($4))
-              AND ($5::jsonb = '[]'::jsonb OR $5::jsonb <@ e.targets)
+              AND ($5::jsonb = '[]'::jsonb OR target_test)
               AND (
                   ($6 AND (vp.ven_id IS NULL OR vp.ven_id = ANY($7))) 
                   OR 

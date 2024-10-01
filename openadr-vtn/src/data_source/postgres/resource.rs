@@ -212,9 +212,13 @@ impl VenScopedCrud for PgResourceStorage {
                 r.attributes,
                 r.targets
             FROM resource r
+              LEFT JOIN LATERAL ( 
+                  SELECT r.id as r_id, 
+                         json_array(jsonb_array_elements(r.targets)) <@ $3::jsonb AS target_test )
+                  ON r.id = r_id
             WHERE r.ven_id = $1
                 AND ($2::text[] IS NULL OR r.resource_name = ANY($2))
-                AND ($3::jsonb = '[]'::jsonb OR $3::jsonb <@ r.targets)
+                AND ($3::jsonb = '[]'::jsonb OR target_test)
             OFFSET $4 LIMIT $5
             "#,
             ven_id.as_str(),
