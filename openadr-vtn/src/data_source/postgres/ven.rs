@@ -196,6 +196,8 @@ impl Crud for PgVenStorage {
         let pg_filter: PostgresFilter = filter.into();
         trace!(?pg_filter);
 
+        dbg!(&pg_filter);
+
         let ids = permissions.as_value();
 
         let mut vens: Vec<Ven> = sqlx::query_as!(

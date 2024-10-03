@@ -40,14 +40,6 @@ pub async fn get(
     Path(id): Path<VenId>,
     User(user): User,
 ) -> AppResponse<Ven> {
-    if user.is_ven() {
-        if !user.ven_ids().iter().any(|vid| *vid == id) {
-            return Err(AppError::Forbidden("User does not have access to this VEN"));
-        }
-    } else if !user.is_ven_manager() {
-        return Err(AppError::Forbidden("User is not a VEN or VEN Manager"));
-    }
-
     let ven = ven_source.retrieve(&id, &user.try_into()?).await?;
 
     Ok(Json(ven))
@@ -132,11 +124,11 @@ mod tests {
         state::AppState,
     };
 
-    async fn request_all(app: Router, token: &str) -> Response<Body> {
+    async fn request_all(app: Router, token: &str, query_params: &str) -> Response<Body> {
         app.oneshot(
             Request::builder()
                 .method(http::Method::GET)
-                .uri("/vens")
+                .uri(format!("/vens{query_params}"))
                 .header(http::header::AUTHORIZATION, format!("Bearer {}", token))
                 .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
                 .body(Body::empty())
@@ -165,7 +157,7 @@ mod tests {
         let token = jwt_test_token(&state, vec![AuthRole::VenManager]);
         let app = state.into_router();
 
-        let resp = request_all(app, &token).await;
+        let resp = request_all(app, &token, "").await;
 
         assert_eq!(resp.status(), http::StatusCode::OK);
         let mut vens: Vec<Ven> = get_response_json(resp).await;
@@ -177,12 +169,43 @@ mod tests {
     }
 
     #[sqlx::test(fixtures("users", "vens"))]
+    async fn get_all_filetred(db: PgPool) {
+        let state = test_state(db);
+        let token = jwt_test_token(&state, vec![AuthRole::VenManager]);
+        let app = state.clone().into_router();
+
+        let resp = request_all(app.clone(), &token, "?skip=1").await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let vens: Vec<Ven> = get_response_json(resp).await;
+        assert_eq!(vens.len(), 1);
+
+        let resp = request_all(app.clone(), &token, "?limit=1").await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let vens: Vec<Ven> = get_response_json(resp).await;
+        assert_eq!(vens.len(), 1);
+
+        let resp = request_all(app.clone(), &token, "?targetType=VEN_NAME&targetValues=ven-2-name").await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let vens: Vec<Ven> = get_response_json(resp).await;
+        assert_eq!(vens.len(), 1);
+        assert_eq!(vens[0].id.as_str(), "ven-2");
+
+        let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
+        let app = state.into_router();
+
+        let resp = request_all(app.clone(), &token, "?targetType=VEN_NAME&targetValues=ven-1-name").await;
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let vens: Vec<Ven> = get_response_json(resp).await;
+        assert_eq!(vens.len(), 0);
+    }
+
+    #[sqlx::test(fixtures("users", "vens"))]
     async fn get_all_ven_user(db: PgPool) {
         let state = test_state(db);
         let token = jwt_test_token(&state, vec![AuthRole::VEN("ven-1".parse().unwrap())]);
         let app = state.into_router();
 
-        let resp = request_all(app, &token).await;
+        let resp = request_all(app, &token, "").await;
 
         assert_eq!(resp.status(), http::StatusCode::OK);
         let vens: Vec<Ven> = get_response_json(resp).await;
