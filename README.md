@@ -1,3 +1,7 @@
+# Moved to https://github.com/OpenLEADR/openleadr-rs
+
+----
+
 # OpenADR 3.0 in Rust
 
 This is a work-in-progress implementation of the OpenADR 3.0 specification.
